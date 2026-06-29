@@ -1,4 +1,4 @@
-# Easy Subtitle Muxer
+# Universal Video Muxer
 
 > Automatically mux subtitles, fonts, chapters, and metadata into your videos using FFmpeg.
 
@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-required-green.svg)](https://ffmpeg.org/)
 
-Easy Subtitle Muxer is a universal FFmpeg-powered muxer designed for anime, donghua, TV series, and fansub releases. It automatically matches episodes with subtitles, embeds fonts, adds optional chapter markers, preserves audio tracks and metadata, and generates clean output filenames using customizable templates. Includes a fully-featured GUI for easy use.
+Universal Video Muxer is a universal FFmpeg-powered muxer designed for anime, donghua, TV series, and fansub releases. It automatically matches episodes with subtitles, embeds fonts, adds optional chapter markers, preserves audio tracks and metadata, and generates clean output filenames using customizable templates. Includes a fully-featured GUI for easy use.
 
 ---
 
