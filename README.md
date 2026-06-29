@@ -140,7 +140,7 @@ Series Folder/
 ### GUI Mode
 
 ```bash
-python muxer_gui.py
+python gui.py
 ```
 
 The GUI provides three modes selectable via a segmented button at the top:
@@ -164,7 +164,7 @@ The GUI provides three modes selectable via a segmented button at the top:
 Open a terminal in the same folder as your episodes and run:
 
 ```bash
-python3 main.py
+python3 cli.py
 ```
 
 ---
