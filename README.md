@@ -81,8 +81,8 @@ ffprobe -version
 **Clone the repository:**
 
 ```bash
-git clone https://github.com/Shridhuu/Mux-Sub.git
-cd Mux-Sub
+git clone https://github.com/FlamingWater35/universal-video-muxer.git
+cd universal-video-muxer
 ```
 
 **Install GUI dependencies:**
