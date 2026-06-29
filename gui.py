@@ -9,6 +9,9 @@ import time
 import tkinter as tk
 from tkinter import filedialog
 
+# Hide console windows for subprocesses on Windows
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # --- Set CustomTkinter Appearance ---
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -245,6 +248,17 @@ class MuxerApp(ctk.CTk):
         )
         self.clear_btn.pack(side="right", padx=10, pady=10)
 
+        # --- Progress Bar Frame ---
+        progress_frame = ctk.CTkFrame(self.main_scroll)
+        progress_frame.pack(fill="x", padx=15, pady=5)
+
+        self.progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.progress_bar.pack(fill="x", expand=True, padx=5, pady=(5, 0))
+        self.progress_bar.set(0)
+
+        self.progress_label = ctk.CTkLabel(progress_frame, text="Progress: 0/0")
+        self.progress_label.pack(anchor="w", padx=5, pady=(0, 5))
+
         # --- Log Output Frame ---
         log_frame = ctk.CTkFrame(self.main_scroll)
         log_frame.pack(fill="both", expand=True, padx=15, pady=(10, 15))
@@ -269,6 +283,13 @@ class MuxerApp(ctk.CTk):
             )
 
     # --- Core Methods ---
+    def update_progress(self, current, total):
+        if total > 0:
+            self.progress_bar.set(current / total)
+        else:
+            self.progress_bar.set(0)
+        self.progress_label.configure(text=f"Progress: {current}/{total}")
+
     def find_executable(self, name):
         if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
             base_path = Path(sys._MEIPASS)
@@ -426,6 +447,10 @@ class MuxerApp(ctk.CTk):
         self.cancel_event.clear()
         self.start_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
+
+        self.progress_bar.set(0)
+        self.progress_label.configure(text="Progress: 0/0")
+
         self.log("=" * 40)
         self.log("Starting muxing process...")
         threading.Thread(target=self.run_muxing_thread, daemon=True).start()
@@ -487,6 +512,7 @@ class MuxerApp(ctk.CTk):
                     capture_output=True,
                     text=True,
                     check=False,
+                    creationflags=CREATE_NO_WINDOW,
                 )
                 return res.stdout.strip() == MUX_TAG
             except:
@@ -506,7 +532,13 @@ class MuxerApp(ctk.CTk):
                 str(path),
             ]
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                res = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    creationflags=CREATE_NO_WINDOW,
+                )
                 return float(res.stdout.strip())
             except:
                 return None
@@ -527,7 +559,13 @@ class MuxerApp(ctk.CTk):
                 str(path),
             ]
             try:
-                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                res = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    creationflags=CREATE_NO_WINDOW,
+                )
                 return bool(res.stdout.strip())
             except:
                 return False
@@ -561,12 +599,16 @@ class MuxerApp(ctk.CTk):
                 return
 
             self.log(f"Found {len(matched_stems)} matching video pairs.\n")
+            total_items = len(matched_stems)
+            self.after(0, self.update_progress, 0, total_items)
 
             success_count = 0
-            for stem in sorted(matched_stems):
+            for i, stem in enumerate(sorted(matched_stems)):
                 if self.cancel_event.is_set():
                     self.log("\n[CANCELLED] Operation cancelled by user.")
                     break
+
+                self.after(0, self.update_progress, i + 1, total_items)
 
                 v_source = source_files[stem]
                 v_target = target_files[stem]
@@ -619,7 +661,11 @@ class MuxerApp(ctk.CTk):
                 ]
 
                 process = subprocess.Popen(
-                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    creationflags=CREATE_NO_WINDOW,
                 )
                 cancelled = False
                 while process.poll() is None:
@@ -812,10 +858,15 @@ class MuxerApp(ctk.CTk):
 
         self.log(f"Found {len(fonts)} font(s)\nMatched {len(paired)} item(s)\n")
 
-        for video, subtitle, ep in paired:
+        total_items = len(paired)
+        self.after(0, self.update_progress, 0, total_items)
+
+        for i, (video, subtitle, ep) in enumerate(paired):
             if self.cancel_event.is_set():
                 self.log("\n[CANCELLED] Operation cancelled by user.")
                 break
+
+            self.after(0, self.update_progress, i + 1, total_items)
 
             try:
                 out_name = (
@@ -897,7 +948,11 @@ class MuxerApp(ctk.CTk):
             self.log(f"[EP{ep:02d}] Processing: {video.name} + {subtitle.name}")
 
             process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                creationflags=CREATE_NO_WINDOW,
             )
             cancelled = False
             while process.poll() is None:
