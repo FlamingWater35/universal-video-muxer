@@ -234,18 +234,18 @@ class MuxerApp(ctk.CTk):
             self.log(f"Ready. Detected ffmpeg at: {self.ffmpeg_path}")
         else:
             self.log(
-                "WARNING: ffmpeg or ffprobe not found in project root or system PATH!"
-            )
-            self.log(
-                "Please place ffmpeg.exe and ffprobe.exe in the same folder as this script."
+                "WARNING: ffmpeg or ffprobe not found in 'tools' folder or system PATH!"
             )
 
-    # --- Core Methods (Unchanged Logic) ---
+    # --- Core Methods ---
     def find_executable(self, name):
         if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            # When compiled, PyInstaller extracts to the root of _MEIPASS because of ";."
             base_path = Path(sys._MEIPASS)
         else:
-            base_path = Path(__file__).parent.resolve()
+            # When running as a script, look in the 'tools' directory
+            base_path = Path(__file__).parent.resolve() / "tools"
+
         for ext in ([".exe", ""] if sys.platform == "win32" else [""]):
             candidate = base_path / f"{name}{ext}"
             if candidate.exists():

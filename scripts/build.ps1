@@ -1,20 +1,39 @@
-# Define the Conda environment path
-$envPath = "C:\Users\Admin\Documents\Mux-Sub\.conda"
+# Determine the project root
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $ProjectRoot
+
+# Define paths
+$envPath = "C:\Users\Admin\Documents\work\projects\VSCodeProjects\universal-video-muxer\.conda"
+$ffmpegPath = "tools\ffmpeg.exe"
+$ffprobePath = "tools\ffprobe.exe"
+$iconIco = "assets\icon.ico"
 
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host " Universal Video Muxer - PyInstaller Build Tool " -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
+Write-Host "Project Root: $ProjectRoot" -ForegroundColor Gray
 Write-Host ""
 
-# Pre-flight check: Ensure binaries are present to be embedded
-if (-not (Test-Path "ffmpeg.exe") -or -not (Test-Path "ffprobe.exe")) {
-    Write-Host "[WARNING] ffmpeg.exe or ffprobe.exe not found in the current directory!" -ForegroundColor Yellow
-    Write-Host "Please ensure they are in the same folder as this script before building." -ForegroundColor Yellow
+# Pre-flight checks
+$missingFiles = @()
+if (-not (Test-Path $ffmpegPath)) { $missingFiles += $ffmpegPath }
+if (-not (Test-Path $ffprobePath)) { $missingFiles += $ffprobePath }
+
+if ($missingFiles.Count -gt 0) {
+    Write-Host "[ERROR] Missing required files:" -ForegroundColor Red
+    $missingFiles | ForEach-Object { Write-Host " - $_" -ForegroundColor Red }
     Write-Host ""
+    Read-Host "Press Enter to exit"
+    exit 1
 }
 
-# Construct the command string
-$cmdToRun = "conda activate `"$envPath`" && pyinstaller --noconfirm --onefile --windowed --name `"UniversalVideoMuxer`" --add-binary `"ffmpeg.exe;.`" --add-binary `"ffprobe.exe;.`" --collect-all `"customtkinter`" gui.py"
+# Build the PyInstaller command
+$iconArg = ""
+if (Test-Path $iconIco) {
+    $iconArg = "--icon=`"$iconIco`""
+}
+
+$cmdToRun = "conda activate `"$envPath`" && pyinstaller --noconfirm --onefile --windowed --name `"UniversalVideoMuxer`" $iconArg --add-binary `"$ffmpegPath;.`" --add-binary `"$ffprobePath;.`" --collect-all `"customtkinter`" gui.py"
 
 Write-Host "Activating environment: $envPath" -ForegroundColor Green
 Write-Host "Executing PyInstaller..." -ForegroundColor Green
