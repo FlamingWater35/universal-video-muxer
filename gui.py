@@ -5,6 +5,7 @@ import re
 import threading
 import shutil
 import sys
+import time
 import tkinter as tk
 from tkinter import filedialog
 
@@ -24,6 +25,9 @@ class MuxerApp(ctk.CTk):
         # --- Main Scrollable Container ---
         self.main_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.main_scroll.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # --- Threading Event for Cancellation ---
+        self.cancel_event = threading.Event()
 
         # --- Helper: Clearable Entry Widget ---
         def make_clearable_entry(parent, var, width=200):
@@ -213,6 +217,7 @@ class MuxerApp(ctk.CTk):
         # --- Control Frame ---
         ctrl_frame = ctk.CTkFrame(self.main_scroll)
         ctrl_frame.pack(fill="x", padx=15, pady=10)
+
         self.start_btn = ctk.CTkButton(
             ctrl_frame,
             text="Start Muxing",
@@ -221,6 +226,20 @@ class MuxerApp(ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold"),
         )
         self.start_btn.pack(side="left", padx=10, pady=10)
+
+        self.cancel_btn = ctk.CTkButton(
+            ctrl_frame,
+            text="Cancel",
+            command=self.cancel_muxing,
+            width=100,
+            height=40,
+            fg_color="#D9534F",
+            hover_color="#C9302C",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            state="disabled",
+        )
+        self.cancel_btn.pack(side="left", padx=10, pady=10)
+
         self.clear_btn = ctk.CTkButton(
             ctrl_frame, text="Clear Log", command=self.clear_log, width=100
         )
@@ -393,11 +412,20 @@ class MuxerApp(ctk.CTk):
 
         self.after(0, update)
 
+    def cancel_muxing(self):
+        self.cancel_event.set()
+        self.cancel_btn.configure(state="disabled")
+        self.log(
+            "\n[CANCEL] Requested cancellation... Please wait for the current process to terminate."
+        )
+
     def start_muxing(self):
         if not self.ffmpeg_path or not self.ffprobe_path:
             self.log("\n[ERROR] Cannot start muxing. ffmpeg or ffprobe is missing.")
             return
+        self.cancel_event.clear()
         self.start_btn.configure(state="disabled")
+        self.cancel_btn.configure(state="normal")
         self.log("=" * 40)
         self.log("Starting muxing process...")
         threading.Thread(target=self.run_muxing_thread, daemon=True).start()
@@ -413,6 +441,7 @@ class MuxerApp(ctk.CTk):
             self.log(f"\n[CRITICAL ERROR] An unexpected error occurred: {e}")
         finally:
             self.after(0, lambda: self.start_btn.configure(state="normal"))
+            self.after(0, lambda: self.cancel_btn.configure(state="disabled"))
 
     def run_muxing_logic(self):
         ffmpeg_path, ffprobe_path = self.ffmpeg_path, self.ffprobe_path
@@ -441,6 +470,8 @@ class MuxerApp(ctk.CTk):
             return int(nums[-1]) if nums else None
 
         def is_already_muxed(path):
+            if self.cancel_event.is_set():
+                return False
             try:
                 res = subprocess.run(
                     [
@@ -462,6 +493,8 @@ class MuxerApp(ctk.CTk):
                 return False
 
         def get_duration(path):
+            if self.cancel_event.is_set():
+                return None
             cmd = [
                 ffprobe_path,
                 "-v",
@@ -479,6 +512,8 @@ class MuxerApp(ctk.CTk):
                 return None
 
         def has_subtitles(path):
+            if self.cancel_event.is_set():
+                return False
             cmd = [
                 ffprobe_path,
                 "-v",
@@ -529,6 +564,10 @@ class MuxerApp(ctk.CTk):
 
             success_count = 0
             for stem in sorted(matched_stems):
+                if self.cancel_event.is_set():
+                    self.log("\n[CANCELLED] Operation cancelled by user.")
+                    break
+
                 v_source = source_files[stem]
                 v_target = target_files[stem]
 
@@ -579,31 +618,47 @@ class MuxerApp(ctk.CTk):
                     str(temp_out),
                 ]
 
-                try:
-                    subprocess.run(
-                        cmd,
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                    )
+                process = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                )
+                cancelled = False
+                while process.poll() is None:
+                    if self.cancel_event.is_set():
+                        process.terminate()
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                        cancelled = True
+                        break
+                    time.sleep(0.2)
+
+                if cancelled:
+                    self.log(f"  [CANCELLED] Stopped by user.")
+                    if temp_out.exists():
+                        temp_out.unlink()
+                    break
+
+                if process.returncode != 0:
+                    self.log(f"  [FAILED] FFmpeg error.")
+                    stderr = process.stderr.read()
+                    if stderr:
+                        for line in stderr.strip().split("\n")[:3]:
+                            self.log(f"    {line}")
+                    if temp_out.exists():
+                        temp_out.unlink()
+                else:
                     if final_out.exists() and final_out.resolve() != v_target.resolve():
                         final_out.unlink()
                     v_target.unlink()
                     temp_out.replace(final_out)
                     self.log(f"  [DONE] Successfully copied subtitles.")
                     success_count += 1
-                except subprocess.CalledProcessError as e:
-                    self.log(f"  [FAILED] FFmpeg error.")
-                    if e.stderr:
-                        for line in e.stderr.strip().split("\n")[:3]:
-                            self.log(f"    {line}")
-                    if temp_out.exists():
-                        temp_out.unlink()
 
-            self.log(
-                f"\nFinished! Successfully processed {success_count} out of {len(matched_stems)} pairs."
-            )
+            if not self.cancel_event.is_set():
+                self.log(
+                    f"\nFinished! Successfully processed {success_count} out of {len(matched_stems)} pairs."
+                )
             return
 
         # --- Standard Muxing Logic (Batch & Single) ---
@@ -690,6 +745,8 @@ class MuxerApp(ctk.CTk):
                 return
             video_by_ep, video_order = {}, []
             for v in video_files:
+                if self.cancel_event.is_set():
+                    break
                 if is_already_muxed(v):
                     continue
                 ep = extract_episode(v.stem)
@@ -698,6 +755,8 @@ class MuxerApp(ctk.CTk):
                     video_by_ep[ep] = v
             subtitle_by_ep, subtitle_order = {}, []
             for s in subtitle_files:
+                if self.cancel_event.is_set():
+                    break
                 ep = extract_episode(s.stem)
                 subtitle_order.append((s, ep))
                 if ep is not None:
@@ -709,6 +768,8 @@ class MuxerApp(ctk.CTk):
                         subtitle_by_ep[ep] = s
             used_v, used_s = set(), set()
             for ep in sorted(set(video_by_ep) & set(subtitle_by_ep)):
+                if self.cancel_event.is_set():
+                    break
                 paired.append((video_by_ep[ep], subtitle_by_ep[ep], ep))
                 used_v.add(video_by_ep[ep])
                 used_s.add(subtitle_by_ep[ep])
@@ -725,6 +786,8 @@ class MuxerApp(ctk.CTk):
             )
             if not paired and len(rem_v) == len(rem_s) and rem_v:
                 for i, v in enumerate(rem_v):
+                    if self.cancel_event.is_set():
+                        break
                     paired.append((v, rem_s[i], i + 1))
         else:
             vp, sp = (
@@ -744,9 +807,16 @@ class MuxerApp(ctk.CTk):
         if not paired:
             self.log("No matching episodes found.")
             return
+        if self.cancel_event.is_set():
+            return  # Cancelled during pairing
+
         self.log(f"Found {len(fonts)} font(s)\nMatched {len(paired)} item(s)\n")
 
         for video, subtitle, ep in paired:
+            if self.cancel_event.is_set():
+                self.log("\n[CANCELLED] Operation cancelled by user.")
+                break
+
             try:
                 out_name = (
                     output_template.format(
@@ -823,31 +893,50 @@ class MuxerApp(ctk.CTk):
                     f"filename={font.name}",
                 ]
             cmd.append(str(temp_out))
+
             self.log(f"[EP{ep:02d}] Processing: {video.name} + {subtitle.name}")
-            try:
-                subprocess.run(
-                    cmd,
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
+
+            process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            cancelled = False
+            while process.poll() is None:
+                if self.cancel_event.is_set():
+                    process.terminate()
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                    cancelled = True
+                    break
+                time.sleep(0.2)
+
+            if cancelled:
+                self.log(f"[EP{ep:02d}] Cancelled by user.")
+                if temp_out.exists():
+                    temp_out.unlink()
+                break
+
+            if process.returncode != 0:
+                self.log(f"[EP{ep:02d}] Failed!")
+                stderr = process.stderr.read()
+                if stderr:
+                    for line in stderr.strip().split("\n")[:3]:
+                        self.log(f"  FFmpeg Error: {line}")
+                if temp_out.exists():
+                    temp_out.unlink()
+            else:
                 if final_out.exists() and final_out.resolve() != video.resolve():
                     final_out.unlink()
                 if temp_out.exists():
                     video.unlink()
                     temp_out.replace(final_out)
                 self.log(f"[EP{ep:02d}] Done.")
-            except subprocess.CalledProcessError as e:
-                self.log(f"[EP{ep:02d}] Failed!")
-                if e.stderr:
-                    for line in e.stderr.strip().split("\n")[:3]:
-                        self.log(f"  FFmpeg Error: {line}")
-                if temp_out.exists():
-                    temp_out.unlink()
+
         if chapter_file and chapter_file.exists():
             chapter_file.unlink()
-        self.log("\nAll operations completed successfully.")
+        if not self.cancel_event.is_set():
+            self.log("\nAll operations completed successfully.")
 
 
 if __name__ == "__main__":
