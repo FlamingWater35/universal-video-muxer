@@ -32,6 +32,9 @@ class MuxerApp(ctk.CTk):
         # --- Threading Event for Cancellation ---
         self.cancel_event = threading.Event()
 
+        # --- List to track editable widgets for disabling/enabling ---
+        self.editable_widgets = []
+
         # --- Helper: Clearable Entry Widget ---
         def make_clearable_entry(parent, var, width=200):
             frame = ctk.CTkFrame(parent, fg_color="transparent")
@@ -50,6 +53,7 @@ class MuxerApp(ctk.CTk):
                 corner_radius=10,
             )
             clear_btn.pack(side="left", padx=(2, 0))
+            self.editable_widgets.extend([entry, clear_btn])
             return frame, entry
 
         # --- Helper: Directory Row ---
@@ -61,9 +65,11 @@ class MuxerApp(ctk.CTk):
             )
             entry_frame, _ = make_clearable_entry(row, var)
             entry_frame.pack(side="left", fill="x", expand=True, padx=5)
-            ctk.CTkButton(
+            btn = ctk.CTkButton(
                 row, text="Browse", width=80, command=lambda: self.browse_dir(var)
-            ).pack(side="left", padx=(5, 10))
+            )
+            btn.pack(side="left", padx=(5, 10))
+            self.editable_widgets.append(btn)
 
         # --- Helper: File Row ---
         def create_file_row(parent, label_text, var, ftype):
@@ -74,12 +80,14 @@ class MuxerApp(ctk.CTk):
             )
             entry_frame, _ = make_clearable_entry(row, var)
             entry_frame.pack(side="left", fill="x", expand=True, padx=5)
-            ctk.CTkButton(
+            btn = ctk.CTkButton(
                 row,
                 text="Browse",
                 width=80,
                 command=lambda: self.browse_file(var, ftype),
-            ).pack(side="left", padx=(5, 10))
+            )
+            btn.pack(side="left", padx=(5, 10))
+            self.editable_widgets.append(btn)
 
         # --- Variables ---
         base_dir = str(Path(".").resolve())
@@ -101,12 +109,18 @@ class MuxerApp(ctk.CTk):
         mode_frame.pack(fill="x", padx=15, pady=(15, 10))
         self.mode_switch = ctk.CTkSegmentedButton(
             mode_frame,
-            values=["Batch Mode", "Single File Mode", "Copy Subtitles Mode"],
+            values=[
+                "Batch Mode",
+                "Single File Mode",
+                "Copy Subtitles Mode",
+                "Remove Subtitles Mode",
+            ],
             variable=self.mode_var,
             command=self.on_mode_change,
             font=ctk.CTkFont(size=13, weight="bold"),
         )
         self.mode_switch.pack(pady=10)
+        self.editable_widgets.append(self.mode_switch)
 
         # --- Source Frame (Directories / Files) ---
         self.source_frame = ctk.CTkFrame(self.main_scroll)
@@ -129,6 +143,9 @@ class MuxerApp(ctk.CTk):
         create_dir_row(
             self.copy_subs_ui, "Target Dir (no subs):", self.target_sub_dir_var
         )
+
+        self.remove_subs_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
+        create_dir_row(self.remove_subs_ui, "Video Directory:", self.video_dir_var)
 
         self.batch_ui.pack(fill="x")  # Default
 
@@ -168,6 +185,7 @@ class MuxerApp(ctk.CTk):
                 command=lambda v=var: self.insert_template_var(v),
             )
             btn.pack(side="left", padx=(0, 5))
+            self.editable_widgets.append(btn)
 
         # --- Jump Points Frame ---
         self.jump_frame = ctk.CTkFrame(self.main_scroll)
@@ -180,6 +198,7 @@ class MuxerApp(ctk.CTk):
             command=self.toggle_jump_points,
         )
         self.jump_switch.pack(anchor="w", padx=10, pady=(10, 5))
+        self.editable_widgets.append(self.jump_switch)
 
         self.jp_input_frame = ctk.CTkFrame(self.jump_frame, fg_color="transparent")
         ctk.CTkLabel(self.jp_input_frame, text="Title:").grid(
@@ -187,6 +206,7 @@ class MuxerApp(ctk.CTk):
         )
         self.jp_title_entry = ctk.CTkEntry(self.jp_input_frame, width=250)
         self.jp_title_entry.grid(row=0, column=1, padx=(0, 15), pady=5)
+        self.editable_widgets.append(self.jp_title_entry)
 
         ctk.CTkLabel(self.jp_input_frame, text="Time:").grid(
             row=0, column=2, padx=(0, 5), pady=5, sticky="e"
@@ -195,16 +215,23 @@ class MuxerApp(ctk.CTk):
             self.jp_input_frame, width=40, placeholder_text="HH"
         )
         self.jp_hh_entry.grid(row=0, column=3, pady=5)
+        self.editable_widgets.append(self.jp_hh_entry)
+
         ctk.CTkLabel(self.jp_input_frame, text=":").grid(row=0, column=4, padx=2)
+
         self.jp_mm_entry = ctk.CTkEntry(
             self.jp_input_frame, width=40, placeholder_text="MM"
         )
         self.jp_mm_entry.grid(row=0, column=5, pady=5)
+        self.editable_widgets.append(self.jp_mm_entry)
+
         ctk.CTkLabel(self.jp_input_frame, text=":").grid(row=0, column=6, padx=2)
+
         self.jp_ss_entry = ctk.CTkEntry(
             self.jp_input_frame, width=50, placeholder_text="SS.ms"
         )
         self.jp_ss_entry.grid(row=0, column=7, pady=5)
+        self.editable_widgets.append(self.jp_ss_entry)
 
         self.jp_add_btn = ctk.CTkButton(
             self.jp_input_frame,
@@ -213,6 +240,7 @@ class MuxerApp(ctk.CTk):
             command=self.add_jump_point,
         )
         self.jp_add_btn.grid(row=0, column=8, padx=(15, 0), pady=5)
+        self.editable_widgets.append(self.jp_add_btn)
 
         self.jp_list_frame = ctk.CTkScrollableFrame(self.jump_frame, height=140)
         self.jump_points = []
@@ -229,6 +257,7 @@ class MuxerApp(ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold"),
         )
         self.start_btn.pack(side="left", padx=10, pady=10)
+        self.editable_widgets.append(self.start_btn)
 
         self.cancel_btn = ctk.CTkButton(
             ctrl_frame,
@@ -248,22 +277,21 @@ class MuxerApp(ctk.CTk):
         )
         self.clear_btn.pack(side="right", padx=10, pady=10)
 
-        # --- Progress Bar Frame ---
-        progress_frame = ctk.CTkFrame(self.main_scroll)
-        progress_frame.pack(fill="x", padx=15, pady=5)
+        # --- Progress Bar Frame (Hidden initially) ---
+        self.progress_frame = ctk.CTkFrame(self.main_scroll)
 
-        self.progress_bar = ctk.CTkProgressBar(progress_frame)
+        self.progress_bar = ctk.CTkProgressBar(self.progress_frame)
         self.progress_bar.pack(fill="x", expand=True, padx=5, pady=(5, 0))
         self.progress_bar.set(0)
 
-        self.progress_label = ctk.CTkLabel(progress_frame, text="Progress: 0/0")
+        self.progress_label = ctk.CTkLabel(self.progress_frame, text="Progress: 0/0")
         self.progress_label.pack(anchor="w", padx=5, pady=(0, 5))
 
         # --- Log Output Frame ---
-        log_frame = ctk.CTkFrame(self.main_scroll)
-        log_frame.pack(fill="both", expand=True, padx=15, pady=(10, 15))
+        self.log_frame = ctk.CTkFrame(self.main_scroll)
+        self.log_frame.pack(fill="both", expand=True, padx=15, pady=(10, 15))
         self.log_text = ctk.CTkTextbox(
-            log_frame,
+            self.log_frame,
             state="disabled",
             wrap="word",
             font=ctk.CTkFont(family="Consolas", size=12),
@@ -283,6 +311,13 @@ class MuxerApp(ctk.CTk):
             )
 
     # --- Core Methods ---
+    def set_ui_state(self, state):
+        for widget in self.editable_widgets:
+            try:
+                widget.configure(state=state)
+            except Exception:
+                pass
+
     def update_progress(self, current, total):
         if total > 0:
             self.progress_bar.set(current / total)
@@ -343,6 +378,7 @@ class MuxerApp(ctk.CTk):
         self.batch_ui.pack_forget()
         self.single_ui.pack_forget()
         self.copy_subs_ui.pack_forget()
+        self.remove_subs_ui.pack_forget()
 
         if value == "Batch Mode":
             self.batch_ui.pack(fill="x")
@@ -350,6 +386,8 @@ class MuxerApp(ctk.CTk):
             self.single_ui.pack(fill="x")
         elif value == "Copy Subtitles Mode":
             self.copy_subs_ui.pack(fill="x")
+        elif value == "Remove Subtitles Mode":
+            self.remove_subs_ui.pack(fill="x")
 
     def toggle_jump_points(self):
         if self.add_jump_points_var.get():
@@ -400,6 +438,8 @@ class MuxerApp(ctk.CTk):
         jp_data = {"title": title, "ms": ms, "row_frame": row_frame, "del_btn": del_btn}
         self.jump_points.append(jp_data)
         del_btn.configure(command=lambda: self.delete_jump_point(jp_data))
+        self.editable_widgets.append(del_btn)
+
         self.jp_title_entry.delete(0, "end")
         self.jp_hh_entry.delete(0, "end")
         self.jp_mm_entry.delete(0, "end")
@@ -408,10 +448,14 @@ class MuxerApp(ctk.CTk):
 
     def delete_jump_point(self, jp_data):
         self.jump_points.remove(jp_data)
+        if jp_data["del_btn"] in self.editable_widgets:
+            self.editable_widgets.remove(jp_data["del_btn"])
         jp_data["row_frame"].destroy()
 
     def clear_jump_points(self):
         for jp in self.jump_points:
+            if jp["del_btn"] in self.editable_widgets:
+                self.editable_widgets.remove(jp["del_btn"])
             jp["row_frame"].destroy()
         self.jump_points.clear()
 
@@ -445,11 +489,13 @@ class MuxerApp(ctk.CTk):
             self.log("\n[ERROR] Cannot start muxing. ffmpeg or ffprobe is missing.")
             return
         self.cancel_event.clear()
-        self.start_btn.configure(state="disabled")
+
+        self.set_ui_state("disabled")
         self.cancel_btn.configure(state="normal")
 
         self.progress_bar.set(0)
         self.progress_label.configure(text="Progress: 0/0")
+        self.progress_frame.pack(fill="x", padx=15, pady=5, before=self.log_frame)
 
         self.log("=" * 40)
         self.log("Starting muxing process...")
@@ -465,14 +511,16 @@ class MuxerApp(ctk.CTk):
         except Exception as e:
             self.log(f"\n[CRITICAL ERROR] An unexpected error occurred: {e}")
         finally:
-            self.after(0, lambda: self.start_btn.configure(state="normal"))
+            self.after(0, lambda: self.set_ui_state("normal"))
             self.after(0, lambda: self.cancel_btn.configure(state="disabled"))
+            self.after(0, self.progress_frame.pack_forget)
 
     def run_muxing_logic(self):
         ffmpeg_path, ffprobe_path = self.ffmpeg_path, self.ffprobe_path
         mode = self.mode_var.get()
         is_batch = mode == "Batch Mode"
         is_copy_subs = mode == "Copy Subtitles Mode"
+        is_remove_subs = mode == "Remove Subtitles Mode"
 
         VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".mov", ".avi", ".webm"}
         MUX_TAG = "universal_mux_v1"
@@ -704,6 +752,116 @@ class MuxerApp(ctk.CTk):
             if not self.cancel_event.is_set():
                 self.log(
                     f"\nFinished! Successfully processed {success_count} out of {len(matched_stems)} pairs."
+                )
+            return
+
+        # --- Remove Subtitles Mode Logic ---
+        if is_remove_subs:
+            video_dir = Path(self.video_dir_var.get())
+            if not video_dir.exists():
+                self.log("[ERROR] Video directory does not exist.")
+                return
+
+            video_files = sorted(
+                [
+                    p
+                    for p in video_dir.iterdir()
+                    if p.is_file()
+                    and p.suffix.lower() in VIDEO_EXTENSIONS
+                    and not p.name.startswith("temp_")
+                    and not p.name.startswith(".mux_")
+                ],
+                key=lambda p: p.name.lower(),
+            )
+
+            if not video_files:
+                self.log("No video files found.")
+                return
+
+            self.log(f"Found {len(video_files)} video(s) to process.\n")
+            total_items = len(video_files)
+            self.after(0, self.update_progress, 0, total_items)
+
+            success_count = 0
+            for i, video in enumerate(video_files):
+                if self.cancel_event.is_set():
+                    self.log("\n[CANCELLED] Operation cancelled by user.")
+                    break
+
+                self.after(0, self.update_progress, i + 1, total_items)
+
+                if not has_subtitles(video):
+                    self.log(f"[SKIP] {video.name} has no subtitle tracks.")
+                    continue
+
+                self.log(f"Removing subtitles from: {video.name}")
+
+                temp_out = video_dir / f".mux_{video.stem}{video.suffix}"
+                final_out = video_dir / f"{video.stem}{video.suffix}"
+
+                cmd = [
+                    ffmpeg_path,
+                    "-hide_banner",
+                    "-loglevel",
+                    "warning",
+                    "-y",
+                    "-i",
+                    str(video),
+                    "-map",
+                    "0:v",
+                    "-map",
+                    "0:a?",
+                    "-map",
+                    "0:t?",  # Keep attachments like fonts
+                    "-c",
+                    "copy",
+                    str(temp_out),
+                ]
+
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    creationflags=CREATE_NO_WINDOW,
+                )
+                cancelled = False
+                while process.poll() is None:
+                    if self.cancel_event.is_set():
+                        process.terminate()
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                        cancelled = True
+                        break
+                    time.sleep(0.2)
+
+                if cancelled:
+                    self.log(f"[CANCELLED] Stopped by user.")
+                    if temp_out.exists():
+                        temp_out.unlink()
+                    break
+
+                if process.returncode != 0:
+                    self.log(f"[FAILED] FFmpeg error.")
+                    stderr = process.stderr.read()
+                    if stderr:
+                        for line in stderr.strip().split("\n")[:3]:
+                            self.log(f"  {line}")
+                    if temp_out.exists():
+                        temp_out.unlink()
+                else:
+                    if final_out.exists() and final_out.resolve() != video.resolve():
+                        final_out.unlink()
+                    video.unlink()
+                    temp_out.replace(final_out)
+                    self.log(f"[DONE] Successfully removed subtitles.")
+                    success_count += 1
+
+            if not self.cancel_event.is_set():
+                self.log(
+                    f"\nFinished! Successfully processed {success_count} out of {len(video_files)} videos."
                 )
             return
 
