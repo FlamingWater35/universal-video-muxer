@@ -49,7 +49,7 @@ class MuxerApp(ctk.CTk):
         def create_dir_row(parent, label_text, var):
             row = ctk.CTkFrame(parent, fg_color="transparent")
             row.pack(fill="x", pady=4)
-            ctk.CTkLabel(row, text=label_text, width=140, anchor="w").pack(
+            ctk.CTkLabel(row, text=label_text, width=150, anchor="w").pack(
                 side="left", padx=(10, 5)
             )
             entry_frame, _ = make_clearable_entry(row, var)
@@ -62,7 +62,7 @@ class MuxerApp(ctk.CTk):
         def create_file_row(parent, label_text, var, ftype):
             row = ctk.CTkFrame(parent, fg_color="transparent")
             row.pack(fill="x", pady=4)
-            ctk.CTkLabel(row, text=label_text, width=140, anchor="w").pack(
+            ctk.CTkLabel(row, text=label_text, width=150, anchor="w").pack(
                 side="left", padx=(10, 5)
             )
             entry_frame, _ = make_clearable_entry(row, var)
@@ -81,6 +81,9 @@ class MuxerApp(ctk.CTk):
         self.font_dir_var = ctk.StringVar(value=str(Path(base_dir) / "sub" / "font"))
         self.single_video_var = ctk.StringVar()
         self.single_sub_var = ctk.StringVar()
+        self.source_sub_dir_var = ctk.StringVar(value=base_dir)
+        self.target_sub_dir_var = ctk.StringVar(value=base_dir)
+
         self.series_name_var = ctk.StringVar()
         self.output_template_var = ctk.StringVar()
         self.mode_var = ctk.StringVar(value="Batch Mode")
@@ -91,7 +94,7 @@ class MuxerApp(ctk.CTk):
         mode_frame.pack(fill="x", padx=15, pady=(15, 10))
         self.mode_switch = ctk.CTkSegmentedButton(
             mode_frame,
-            values=["Batch Mode", "Single File Mode"],
+            values=["Batch Mode", "Single File Mode", "Copy Subtitles Mode"],
             variable=self.mode_var,
             command=self.on_mode_change,
             font=ctk.CTkFont(size=13, weight="bold"),
@@ -111,7 +114,16 @@ class MuxerApp(ctk.CTk):
         create_file_row(
             self.single_ui, "Subtitle File:", self.single_sub_var, "Subtitle"
         )
-        self.batch_ui.pack(fill="x")
+
+        self.copy_subs_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
+        create_dir_row(
+            self.copy_subs_ui, "Source Dir (with subs):", self.source_sub_dir_var
+        )
+        create_dir_row(
+            self.copy_subs_ui, "Target Dir (no subs):", self.target_sub_dir_var
+        )
+
+        self.batch_ui.pack(fill="x")  # Default
 
         # --- Font Directory (Shared) ---
         font_frame = ctk.CTkFrame(self.main_scroll)
@@ -240,10 +252,8 @@ class MuxerApp(ctk.CTk):
     # --- Core Methods ---
     def find_executable(self, name):
         if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-            # When compiled, PyInstaller extracts to the root of _MEIPASS because of ";."
             base_path = Path(sys._MEIPASS)
         else:
-            # When running as a script, look in the 'tools' directory
             base_path = Path(__file__).parent.resolve() / "tools"
 
         for ext in ([".exe", ""] if sys.platform == "win32" else [""]):
@@ -290,12 +300,16 @@ class MuxerApp(ctk.CTk):
             var.set(file_path)
 
     def on_mode_change(self, value):
+        self.batch_ui.pack_forget()
+        self.single_ui.pack_forget()
+        self.copy_subs_ui.pack_forget()
+
         if value == "Batch Mode":
-            self.single_ui.pack_forget()
             self.batch_ui.pack(fill="x")
-        else:
-            self.batch_ui.pack_forget()
+        elif value == "Single File Mode":
             self.single_ui.pack(fill="x")
+        elif value == "Copy Subtitles Mode":
+            self.copy_subs_ui.pack(fill="x")
 
     def toggle_jump_points(self):
         if self.add_jump_points_var.get():
@@ -402,25 +416,12 @@ class MuxerApp(ctk.CTk):
 
     def run_muxing_logic(self):
         ffmpeg_path, ffprobe_path = self.ffmpeg_path, self.ffprobe_path
-        is_batch = self.mode_var.get() == "Batch Mode"
-        VIDEO_DIR = (
-            Path(self.video_dir_var.get())
-            if is_batch
-            else (
-                Path(self.single_video_var.get().strip()).parent
-                if self.single_video_var.get().strip()
-                else Path(self.video_dir_var.get())
-            )
-        )
-        SUB_DIR = Path(self.sub_dir_var.get()) if is_batch else None
-        FONT_DIR = Path(self.font_dir_var.get())
-        SUB_EXTENSIONS = {".ass", ".ssa", ".srt", ".vtt", ".sub"}
-        SUB_PREFERENCE = {".ass": 0, ".ssa": 1, ".srt": 2, ".vtt": 3, ".sub": 4}
+        mode = self.mode_var.get()
+        is_batch = mode == "Batch Mode"
+        is_copy_subs = mode == "Copy Subtitles Mode"
+
         VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".mov", ".avi", ".webm"}
         MUX_TAG = "universal_mux_v1"
-        series_name = self.series_name_var.get().strip()
-        output_template = self.output_template_var.get().strip()
-        jump_points_data = self.jump_points if self.add_jump_points_var.get() else []
 
         def extract_episode(name):
             for p in [
@@ -459,6 +460,170 @@ class MuxerApp(ctk.CTk):
                 return res.stdout.strip() == MUX_TAG
             except:
                 return False
+
+        def get_duration(path):
+            cmd = [
+                ffprobe_path,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ]
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                return float(res.stdout.strip())
+            except:
+                return None
+
+        def has_subtitles(path):
+            cmd = [
+                ffprobe_path,
+                "-v",
+                "error",
+                "-select_streams",
+                "s",
+                "-show_entries",
+                "stream=index",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ]
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                return bool(res.stdout.strip())
+            except:
+                return False
+
+        # --- Copy Subtitles Mode Logic ---
+        if is_copy_subs:
+            source_dir = Path(self.source_sub_dir_var.get())
+            target_dir = Path(self.target_sub_dir_var.get())
+
+            if not source_dir.exists() or not target_dir.exists():
+                self.log("[ERROR] Source or Target directory does not exist.")
+                return
+
+            source_files = {
+                p.stem: p
+                for p in source_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS
+            }
+            target_files = {
+                p.stem: p
+                for p in target_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS
+            }
+
+            matched_stems = set(source_files.keys()) & set(target_files.keys())
+
+            if not matched_stems:
+                self.log(
+                    "No matching video filenames found between the two directories."
+                )
+                return
+
+            self.log(f"Found {len(matched_stems)} matching video pairs.\n")
+
+            success_count = 0
+            for stem in sorted(matched_stems):
+                v_source = source_files[stem]
+                v_target = target_files[stem]
+
+                self.log(f"Checking: {stem}")
+
+                if not has_subtitles(v_source):
+                    self.log(f"  [SKIP] Source video has no subtitle tracks.")
+                    continue
+
+                dur_source = get_duration(v_source)
+                dur_target = get_duration(v_target)
+
+                if dur_source is None or dur_target is None:
+                    self.log(f"  [ERROR] Could not determine duration. Skipping.")
+                    continue
+
+                if abs(dur_source - dur_target) > 1.5:  # 1.5 second tolerance
+                    self.log(
+                        f"  [SKIP] Duration mismatch! Source: {dur_source:.2f}s, Target: {dur_target:.2f}s"
+                    )
+                    continue
+
+                self.log(f"  Durations match ({dur_target:.2f}s). Copying subtitles...")
+
+                temp_out = target_dir / f".mux_{v_target.stem}.mkv"
+                final_out = target_dir / f"{v_target.stem}.mkv"
+
+                cmd = [
+                    ffmpeg_path,
+                    "-hide_banner",
+                    "-loglevel",
+                    "warning",
+                    "-y",
+                    "-i",
+                    str(v_source),  # Input 0: Source (with subs)
+                    "-i",
+                    str(v_target),  # Input 1: Target (without subs)
+                    "-map",
+                    "1:v",  # Video from target
+                    "-map",
+                    "1:a?",  # Audio from target
+                    "-map",
+                    "0:s?",  # Subtitles from source
+                    "-c",
+                    "copy",  # Copy all codecs
+                    "-disposition:s:0",
+                    "default",
+                    str(temp_out),
+                ]
+
+                try:
+                    subprocess.run(
+                        cmd,
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                    if final_out.exists() and final_out.resolve() != v_target.resolve():
+                        final_out.unlink()
+                    v_target.unlink()
+                    temp_out.replace(final_out)
+                    self.log(f"  [DONE] Successfully copied subtitles.")
+                    success_count += 1
+                except subprocess.CalledProcessError as e:
+                    self.log(f"  [FAILED] FFmpeg error.")
+                    if e.stderr:
+                        for line in e.stderr.strip().split("\n")[:3]:
+                            self.log(f"    {line}")
+                    if temp_out.exists():
+                        temp_out.unlink()
+
+            self.log(
+                f"\nFinished! Successfully processed {success_count} out of {len(matched_stems)} pairs."
+            )
+            return
+
+        # --- Standard Muxing Logic (Batch & Single) ---
+        VIDEO_DIR = (
+            Path(self.video_dir_var.get())
+            if is_batch
+            else (
+                Path(self.single_video_var.get().strip()).parent
+                if self.single_video_var.get().strip()
+                else Path(self.video_dir_var.get())
+            )
+        )
+        SUB_DIR = Path(self.sub_dir_var.get()) if is_batch else None
+        FONT_DIR = Path(self.font_dir_var.get())
+        SUB_EXTENSIONS = {".ass", ".ssa", ".srt", ".vtt", ".sub"}
+        SUB_PREFERENCE = {".ass": 0, ".ssa": 1, ".srt": 2, ".vtt": 3, ".sub": 4}
+
+        series_name = self.series_name_var.get().strip()
+        output_template = self.output_template_var.get().strip()
+        jump_points_data = self.jump_points if self.add_jump_points_var.get() else []
 
         chapter_file = None
         if jump_points_data:
