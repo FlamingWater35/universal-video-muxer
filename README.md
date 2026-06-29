@@ -164,7 +164,7 @@ The GUI provides three modes selectable via a segmented button at the top:
 Open a terminal in the same folder as your episodes and run:
 
 ```bash
-python3 cli.py
+python cli.py
 ```
 
 ---
