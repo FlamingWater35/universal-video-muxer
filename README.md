@@ -7,9 +7,9 @@
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-required-green.svg)](https://ffmpeg.org/)
 [![CustomTkinter](https://img.shields.io/badge/GUI-CustomTkinter-orange.svg)](https://github.com/TomSchimansky/CustomTkinter)
 
-Universal Video Muxer is a universal FFmpeg-powered muxer designed for anime, donghua, TV series, and fansub releases. It automatically matches episodes with subtitles, embeds fonts, adds optional chapter markers, preserves audio tracks and metadata, and generates clean output filenames using customizable templates.
+Universal Video Muxer is a universal ffmpeg-powered muxer designed for anime, donghua, TV series, and fansub releases. It automatically matches episodes with subtitles, embeds fonts, adds optional chapter markers, preserves audio tracks and metadata, and generates clean output filenames using customizable templates. It also includes powerful subtitle management tools like batch font replacement and subtitle stripping.
 
-**Now includes a fully-featured CustomTkinter GUI** with batch processing, single-file mode, subtitle copying between videos, and real-time cancellation.
+**It includes a fully-featured CustomTkinter GUI** with batch processing, single-file mode, subtitle copying, font editing, real-time cancellation, and visual progress tracking.
 
 ---
 
@@ -26,10 +26,14 @@ GitHub: [https://github.com/Shridhuu](https://github.com/Shridhuu)
 ### GUI Features
 
 - **Modern Dark/Light Mode UI** — built with CustomTkinter
-- **Three Operating Modes:**
+- **Five Operating Modes:**
   - **Batch Mode** — process entire folders automatically
   - **Single File Mode** — mux individual video + subtitle pairs
   - **Copy Subtitles Mode** — transfer subtitle tracks between matching videos with duration verification
+  - **Remove Subtitles Mode** — strip all subtitle tracks from video files while preserving attachments and metadata
+  - **Edit Fonts Mode** — scan and replace font names in `.ass`/`.ssa` files using a searchable dropdown of open-source/Google Fonts
+- **Font Verification** — automatically checks if all fonts required by subtitles are present in your font directory before muxing, prompting for confirmation if any are missing
+- **Visual Progress Tracking** — real-time progress bar showing processed vs. total files
 - **Real-time Cancellation** — safely stop muxing mid-process without corrupting files
 - **Visual Chapter Editor** — add jump points with HH:MM:SS time pickers instead of raw text
 - **Template Variable Buttons** — one-click insertion of `{series}`, `{ep}`, `{ep2}`, `{video_stem}`
@@ -143,19 +147,22 @@ Series Folder/
 python gui.py
 ```
 
-The GUI provides three modes selectable via a segmented button at the top:
+The GUI provides five modes selectable via a segmented button at the top:
 
 | Mode | Description |
 |---|---|
 | **Batch Mode** | Select video, subtitle, and font directories. Episodes are auto-matched by name/number. |
 | **Single File Mode** | Pick one video file and one subtitle file for manual muxing. |
 | **Copy Subtitles Mode** | Select a source directory (videos with subs) and target directory (videos without). Matches by filename and verifies duration before copying. |
+| **Remove Subtitles Mode** | Select a video directory to strip all embedded subtitle tracks while keeping video, audio, and attachments intact. |
+| **Edit Fonts Mode** | Scan `.ass`/`.ssa` files to find used fonts, then map them to open-source alternatives (e.g., Google Fonts) via a searchable dropdown. |
 
 #### Key GUI Controls
 
 - **✕ Clear Buttons** — every text field has a subtle clear button
 - **Template Variable Buttons** — click `{series}`, `{ep}`, `{ep2}`, or `{video_stem}` to insert into the output template
 - **Chapter Editor** — toggle "Add Jump Points", then use the Title + HH:MM:SS fields to add chapters visually
+- **Font Editor** — in Edit Fonts mode, scan files to populate the mapping table, then use the searchable dropdowns to assign open-source font replacements
 - **Cancel Button** — appears during processing; safely terminates FFmpeg and cleans up temp files
 - **Log Panel** — real-time scrollable console output at the bottom
 
@@ -264,6 +271,10 @@ All font files inside the configured font directory are automatically embedded i
 
 **Supported formats:** `.ttf`, `.otf`, `.ttc`
 
+**Font Verification:** Before muxing, the tool scans your subtitle files to ensure every required font is present in your font directory. If any are missing, it will warn you and ask for confirmation before proceeding.
+
+**Font Editing:** Use the **Edit Fonts Mode** to quickly replace proprietary or missing fonts in your subtitle scripts with open-source alternatives. The built-in dropdown includes popular Google Fonts and open-source families (e.g., Roboto, Noto Sans, Inter, Merriweather) along with their weight variants (Bold, Medium, etc.).
+
 ---
 
 ## What Gets Preserved / Removed
@@ -289,6 +300,7 @@ All font files inside the configured font directory are automatically embedded i
 - FFmpeg and FFprobe are auto-detected from `tools/` first, then system PATH.
 - Existing cover art is intentionally ignored during muxing.
 - **Cancellation** safely terminates FFmpeg and removes incomplete temp files.
+- **Remove Subtitles Mode** preserves attached fonts and metadata while stripping subtitle streams.
 
 ---
 
