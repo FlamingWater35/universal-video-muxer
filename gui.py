@@ -245,14 +245,11 @@ class MuxerApp(ctk.CTk):
 
         self.font_mapping_vars = {}
         self.common_fonts = [
-            # --- Sans-Serif (Regular & Weights) ---
             "Roboto",
             "Roboto Medium",
             "Roboto Bold",
             "Roboto Light",
             "Roboto Black",
-            "Roboto Condensed",
-            "Roboto Condensed Bold",
             "Open Sans",
             "Open Sans SemiBold",
             "Open Sans Bold",
@@ -261,7 +258,6 @@ class MuxerApp(ctk.CTk):
             "Montserrat Medium",
             "Montserrat SemiBold",
             "Montserrat Bold",
-            "Montserrat Light",
             "Lato",
             "Lato Medium",
             "Lato Bold",
@@ -289,14 +285,6 @@ class MuxerApp(ctk.CTk):
             "Fira Sans Medium",
             "Fira Sans Bold",
             "Fira Sans Light",
-            "Work Sans",
-            "Work Sans Medium",
-            "Work Sans Bold",
-            "Raleway",
-            "Raleway Medium",
-            "Raleway SemiBold",
-            "Raleway Bold",
-            # --- Serif (Regular & Weights) ---
             "Merriweather",
             "Merriweather Bold",
             "Merriweather Light",
@@ -318,10 +306,6 @@ class MuxerApp(ctk.CTk):
             "Source Serif 4",
             "Source Serif 4 Bold",
             "Source Serif 4 SemiBold",
-            "Noto Serif",
-            "Noto Serif Bold",
-            "Noto Serif SemiBold",
-            # --- Monospace (Regular & Weights) ---
             "Roboto Mono",
             "Roboto Mono Bold",
             "Roboto Mono Medium",
@@ -337,15 +321,6 @@ class MuxerApp(ctk.CTk):
             "JetBrains Mono Bold",
             "JetBrains Mono Medium",
             "JetBrains Mono SemiBold",
-            "Space Mono",
-            "Space Mono Bold",
-            "Inconsolata",
-            "Inconsolata Bold",
-            "Inconsolata Medium",
-            "Cascadia Code",
-            "Cascadia Code Bold",
-            "Cascadia Mono",
-            # --- CJK / International (Open Source) ---
             "Noto Sans CJK JP",
             "Noto Sans CJK JP Bold",
             "Noto Sans CJK JP Medium",
@@ -370,7 +345,6 @@ class MuxerApp(ctk.CTk):
             "Source Han Serif",
             "Source Han Serif Bold",
             "Source Han Serif SemiBold",
-            # --- Handwriting / Display ---
             "Caveat",
             "Caveat Bold",
             "Pacifico",
@@ -571,8 +545,24 @@ class MuxerApp(ctk.CTk):
         self.ctrl_frame = ctk.CTkFrame(self.main_scroll, fg_color="transparent")
         self.ctrl_frame.pack(fill="x", padx=10, pady=10)
 
+        self.options_frame = ctk.CTkFrame(self.ctrl_frame, fg_color="transparent")
+        self.options_frame.pack(side="top", fill="x", pady=(0, 10))
+
+        self.replace_original_var = ctk.BooleanVar(value=False)
+        self.replace_cb = ctk.CTkCheckBox(
+            self.options_frame,
+            text="Replace Original Video (Destructive - OVERWRITES Source)",
+            variable=self.replace_original_var,
+            text_color="#D9534F",
+        )
+        self.replace_cb.pack(side="left")
+        self.editable_widgets.append(self.replace_cb)
+
+        self.buttons_frame = ctk.CTkFrame(self.ctrl_frame, fg_color="transparent")
+        self.buttons_frame.pack(side="top", fill="x")
+
         self.start_btn = ctk.CTkButton(
-            self.ctrl_frame,
+            self.buttons_frame,
             text="▶ Start Operation",
             command=self.start_muxing,
             height=45,
@@ -584,7 +574,7 @@ class MuxerApp(ctk.CTk):
         self.editable_widgets.append(self.start_btn)
 
         self.cancel_btn = ctk.CTkButton(
-            self.ctrl_frame,
+            self.buttons_frame,
             text="🛑 Cancel",
             command=self.cancel_muxing,
             width=100,
@@ -597,7 +587,7 @@ class MuxerApp(ctk.CTk):
         self.cancel_btn.pack(side="left")
 
         self.clear_btn = ctk.CTkButton(
-            self.ctrl_frame,
+            self.buttons_frame,
             text="🗑️ Clear Log",
             command=self.clear_log,
             width=110,
@@ -647,6 +637,18 @@ class MuxerApp(ctk.CTk):
             )
 
     # --- Core Methods ---
+    def _read_subtitle(self, file_path):
+        """Helper to safely read subtitle contents prioritizing utf-8-sig, utf-16, then cp1252."""
+        for enc in ["utf-8-sig", "utf-16", "cp1252"]:
+            try:
+                with open(file_path, "r", encoding=enc) as f:
+                    return f.read(), enc
+            except UnicodeError:
+                continue
+        # Fallback ignoring errors
+        with open(file_path, "r", encoding="cp1252", errors="ignore") as f:
+            return f.read(), "cp1252"
+
     def toggle_download_source(self):
         if self.download_type_var.get() == "Folder":
             self.dl_folder_frame.pack(fill="x", pady=4, before=self.dl_out_frame)
@@ -685,13 +687,7 @@ class MuxerApp(ctk.CTk):
 
         fonts_found = set()
         for f in sub_files:
-            try:
-                content = f.read_text(encoding="utf-8-sig", errors="ignore")
-            except Exception:
-                try:
-                    content = f.read_text(encoding="cp1252", errors="ignore")
-                except Exception:
-                    continue
+            content, _ = self._read_subtitle(f)
 
             in_styles = False
             font_idx = -1
@@ -786,10 +782,7 @@ class MuxerApp(ctk.CTk):
 
         fonts_found = set()
         for f in sub_files:
-            try:
-                content = f.read_text(encoding="utf-8-sig", errors="ignore")
-            except Exception:
-                continue
+            content, _ = self._read_subtitle(f)
 
             in_styles = False
             font_idx = -1
@@ -1077,6 +1070,34 @@ class MuxerApp(ctk.CTk):
                 )
                 return
 
+        # Snapshot all UI variables in main thread context
+        config = {
+            "mode": self.mode_var.get(),
+            "video_dir": self.video_dir_var.get(),
+            "sub_dir": self.sub_dir_var.get(),
+            "font_dir": self.font_dir_var.get(),
+            "single_video": self.single_video_var.get(),
+            "single_sub": self.single_sub_var.get(),
+            "source_sub_dir": self.source_sub_dir_var.get(),
+            "target_sub_dir": self.target_sub_dir_var.get(),
+            "edit_sub_dir": self.edit_sub_dir_var.get(),
+            "edit_single_sub": self.edit_single_sub_var.get(),
+            "edit_type": self.edit_type_var.get(),
+            "download_sub_dir": self.download_sub_dir_var.get(),
+            "download_single_sub": self.download_single_sub_var.get(),
+            "download_type": self.download_type_var.get(),
+            "download_out_dir": self.download_out_dir_var.get(),
+            "series_name": self.series_name_var.get(),
+            "output_template": self.output_template_var.get(),
+            "add_jump_points": self.add_jump_points_var.get(),
+            "replace_original": self.replace_original_var.get(),
+            "jump_points": list(self.jump_points),
+            "font_map": {
+                orig: var.get() for orig, var in self.font_mapping_vars.items()
+            },
+            "dl_fonts": [font for font, var in self.dl_font_vars.items() if var.get()],
+        }
+
         self.cancel_event.clear()
 
         self.set_ui_state("disabled")
@@ -1088,11 +1109,13 @@ class MuxerApp(ctk.CTk):
 
         self.log("=" * 50)
         self.log("Starting operation...")
-        threading.Thread(target=self.run_muxing_thread, daemon=True).start()
+        threading.Thread(
+            target=self.run_muxing_thread, args=(config,), daemon=True
+        ).start()
 
-    def run_muxing_thread(self):
+    def run_muxing_thread(self, config):
         try:
-            self.run_muxing_logic()
+            self.run_muxing_logic(config)
         except FileNotFoundError:
             self.log(
                 "\n[ERROR] 'ffmpeg' or 'ffprobe' command not found during execution."
@@ -1104,9 +1127,9 @@ class MuxerApp(ctk.CTk):
             self.after(0, lambda: self.cancel_btn.configure(state="disabled"))
             self.after(0, self.progress_frame.pack_forget)
 
-    def run_muxing_logic(self):
+    def run_muxing_logic(self, config):
         ffmpeg_path, ffprobe_path = self.ffmpeg_path, self.ffprobe_path
-        mode = self.mode_var.get()
+        mode = config["mode"]
         is_batch = mode == "Batch Mode"
         is_copy_subs = mode == "Copy Subtitles"
         is_remove_subs = mode == "Remove Subtitles"
@@ -1211,8 +1234,8 @@ class MuxerApp(ctk.CTk):
 
         # --- Copy Subtitles Mode Logic ---
         if is_copy_subs:
-            source_dir = Path(self.source_sub_dir_var.get())
-            target_dir = Path(self.target_sub_dir_var.get())
+            source_dir = Path(config["source_sub_dir"])
+            target_dir = Path(config["target_sub_dir"])
 
             if not source_dir.exists() or not target_dir.exists():
                 self.log("[ERROR] Source or Target directory does not exist.")
@@ -1274,7 +1297,6 @@ class MuxerApp(ctk.CTk):
                 self.log(f"  Durations match ({dur_target:.2f}s). Copying subtitles...")
 
                 temp_out = target_dir / f".mux_{v_target.stem}.mkv"
-                final_out = target_dir / f"{v_target.stem}.mkv"
 
                 cmd = [
                     ffmpeg_path,
@@ -1292,6 +1314,8 @@ class MuxerApp(ctk.CTk):
                     "1:a?",  # Audio from target
                     "-map",
                     "0:s?",  # Subtitles from source
+                    "-map",
+                    "1:t?",  # Keep target attachments
                     "-c",
                     "copy",  # Copy all codecs
                     "-disposition:s:0",
@@ -1306,17 +1330,23 @@ class MuxerApp(ctk.CTk):
                     text=True,
                     creationflags=CREATE_NO_WINDOW,
                 )
+
+                err_log = ""
                 cancelled = False
-                while process.poll() is None:
-                    if self.cancel_event.is_set():
-                        process.terminate()
-                        try:
-                            process.wait(timeout=2)
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-                        cancelled = True
+                while True:
+                    try:
+                        out, err = process.communicate(timeout=0.2)
+                        err_log += err or ""
                         break
-                    time.sleep(0.2)
+                    except subprocess.TimeoutExpired:
+                        if self.cancel_event.is_set():
+                            process.terminate()
+                            try:
+                                process.wait(timeout=2)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                            cancelled = True
+                            break
 
                 if cancelled:
                     self.log(f"  [CANCELLED] Stopped by user.")
@@ -1326,17 +1356,26 @@ class MuxerApp(ctk.CTk):
 
                 if process.returncode != 0:
                     self.log(f"  [FAILED] FFmpeg error.")
-                    stderr = process.stderr.read()
-                    if stderr:
-                        for line in stderr.strip().split("\n")[:3]:
+                    if err_log:
+                        for line in err_log.strip().split("\n")[:3]:
                             self.log(f"    {line}")
                     if temp_out.exists():
                         temp_out.unlink()
                 else:
-                    if final_out.exists() and final_out.resolve() != v_target.resolve():
-                        final_out.unlink()
-                    v_target.unlink()
-                    temp_out.replace(final_out)
+                    if config["replace_original"]:
+                        final_out = target_dir / f"{v_target.stem}.mkv"
+                        if (
+                            final_out.exists()
+                            and final_out.resolve() != v_target.resolve()
+                        ):
+                            final_out.unlink()
+                        v_target.unlink()
+                        temp_out.replace(final_out)
+                    else:
+                        final_out = target_dir / f"{v_target.stem}_copied.mkv"
+                        if final_out.exists():
+                            final_out.unlink()
+                        temp_out.replace(final_out)
                     self.log(f"  [DONE] Successfully copied subtitles.")
                     success_count += 1
 
@@ -1348,7 +1387,7 @@ class MuxerApp(ctk.CTk):
 
         # --- Remove Subtitles Mode Logic ---
         if is_remove_subs:
-            video_dir = Path(self.video_dir_var.get())
+            video_dir = Path(config["video_dir"])
             if not video_dir.exists():
                 self.log("[ERROR] Video directory does not exist.")
                 return
@@ -1388,7 +1427,6 @@ class MuxerApp(ctk.CTk):
                 self.log(f"Removing subtitles from: {video.name}")
 
                 temp_out = video_dir / f".mux_{video.stem}{video.suffix}"
-                final_out = video_dir / f"{video.stem}{video.suffix}"
 
                 cmd = [
                     ffmpeg_path,
@@ -1416,17 +1454,23 @@ class MuxerApp(ctk.CTk):
                     text=True,
                     creationflags=CREATE_NO_WINDOW,
                 )
+
+                err_log = ""
                 cancelled = False
-                while process.poll() is None:
-                    if self.cancel_event.is_set():
-                        process.terminate()
-                        try:
-                            process.wait(timeout=2)
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-                        cancelled = True
+                while True:
+                    try:
+                        out, err = process.communicate(timeout=0.2)
+                        err_log += err or ""
                         break
-                    time.sleep(0.2)
+                    except subprocess.TimeoutExpired:
+                        if self.cancel_event.is_set():
+                            process.terminate()
+                            try:
+                                process.wait(timeout=2)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                            cancelled = True
+                            break
 
                 if cancelled:
                     self.log(f"[CANCELLED] Stopped by user.")
@@ -1436,17 +1480,26 @@ class MuxerApp(ctk.CTk):
 
                 if process.returncode != 0:
                     self.log(f"[FAILED] FFmpeg error.")
-                    stderr = process.stderr.read()
-                    if stderr:
-                        for line in stderr.strip().split("\n")[:3]:
+                    if err_log:
+                        for line in err_log.strip().split("\n")[:3]:
                             self.log(f"  {line}")
                     if temp_out.exists():
                         temp_out.unlink()
                 else:
-                    if final_out.exists() and final_out.resolve() != video.resolve():
-                        final_out.unlink()
-                    video.unlink()
-                    temp_out.replace(final_out)
+                    if config["replace_original"]:
+                        final_out = video_dir / f"{video.stem}{video.suffix}"
+                        if (
+                            final_out.exists()
+                            and final_out.resolve() != video.resolve()
+                        ):
+                            final_out.unlink()
+                        video.unlink()
+                        temp_out.replace(final_out)
+                    else:
+                        final_out = video_dir / f"{video.stem}_nosubs{video.suffix}"
+                        if final_out.exists():
+                            final_out.unlink()
+                        temp_out.replace(final_out)
                     self.log(f"[DONE] Successfully removed subtitles.")
                     success_count += 1
 
@@ -1458,9 +1511,8 @@ class MuxerApp(ctk.CTk):
 
         # --- Edit Fonts Mode Logic ---
         if is_edit_fonts:
-            source_type = self.edit_type_var.get()
-
-            font_map = {orig: var.get() for orig, var in self.font_mapping_vars.items()}
+            source_type = config["edit_type"]
+            font_map = config["font_map"]
 
             if not font_map:
                 self.log(
@@ -1470,7 +1522,7 @@ class MuxerApp(ctk.CTk):
 
             sub_files = []
             if source_type == "Folder":
-                sub_dir = Path(self.edit_sub_dir_var.get())
+                sub_dir = Path(config["edit_sub_dir"])
                 if not sub_dir.exists():
                     self.log("[ERROR] Subtitle directory does not exist.")
                     return
@@ -1480,7 +1532,7 @@ class MuxerApp(ctk.CTk):
                     if p.is_file() and p.suffix.lower() in {".ass", ".ssa"}
                 ]
             else:
-                sub_file = Path(self.edit_single_sub_var.get().strip())
+                sub_file = Path(config["edit_single_sub"].strip())
                 if not sub_file.exists():
                     self.log("[ERROR] Subtitle file does not exist.")
                     return
@@ -1510,19 +1562,7 @@ class MuxerApp(ctk.CTk):
                 self.log(f"Editing fonts in: {sub_file.name}")
 
                 try:
-                    content = ""
-                    encoding_used = "utf-8-sig"
-                    try:
-                        with open(sub_file, "r", encoding="utf-8-sig") as f:
-                            content = f.read()
-                    except UnicodeDecodeError:
-                        try:
-                            with open(sub_file, "r", encoding="cp1252") as f:
-                                content = f.read()
-                            encoding_used = "cp1252"
-                        except Exception as e:
-                            self.log(f"  [ERROR] Could not read file: {e}")
-                            continue
+                    content, encoding_used = self._read_subtitle(sub_file)
 
                     lines = content.splitlines(True)
                     in_styles_section = False
@@ -1601,18 +1641,12 @@ class MuxerApp(ctk.CTk):
 
         # --- Download Fonts Mode Logic ---
         if is_download_fonts:
-            if not self.dl_font_vars:
-                self.log("[ERROR] No fonts scanned. Please scan the subtitles first.")
-                return
-
-            fonts_to_download = [
-                font for font, var in self.dl_font_vars.items() if var.get()
-            ]
+            fonts_to_download = config["dl_fonts"]
             if not fonts_to_download:
                 self.log("[ERROR] No fonts selected for download.")
                 return
 
-            out_dir = Path(self.download_out_dir_var.get())
+            out_dir = Path(config["download_out_dir"])
 
             if not out_dir.exists():
                 try:
@@ -1680,13 +1714,8 @@ class MuxerApp(ctk.CTk):
 
                 try:
                     req = urllib.request.Request(url, headers=headers)
-                    ctx = ssl.create_default_context()
-                    ctx.check_hostname = False
-                    ctx.verify_mode = ssl.CERT_NONE
 
-                    with urllib.request.urlopen(
-                        req, context=ctx, timeout=10
-                    ) as response:
+                    with urllib.request.urlopen(req, timeout=10) as response:
                         css_content = response.read().decode("utf-8")
 
                     if not css_content or "@font-face" not in css_content:
@@ -1694,9 +1723,7 @@ class MuxerApp(ctk.CTk):
                             f"https://fonts.googleapis.com/css?family={family_url}"
                         )
                         req = urllib.request.Request(url_fallback, headers=headers)
-                        with urllib.request.urlopen(
-                            req, context=ctx, timeout=10
-                        ) as response:
+                        with urllib.request.urlopen(req, timeout=10) as response:
                             css_content = response.read().decode("utf-8")
 
                     urls = re.findall(r"url\((.*?)\)", css_content)
@@ -1705,7 +1732,8 @@ class MuxerApp(ctk.CTk):
                         failed_fonts.append(font_name)
                         continue
 
-                    font_url = urls[0]
+                    # Properly strip quotes if present
+                    font_url = urls[0].strip("\"'")
                     ext = font_url.split(".")[-1]
                     if "?" in ext:
                         ext = ext.split("?")[0]
@@ -1720,9 +1748,7 @@ class MuxerApp(ctk.CTk):
                         continue
 
                     req_font = urllib.request.Request(font_url)
-                    with urllib.request.urlopen(
-                        req_font, context=ctx, timeout=15
-                    ) as font_res:
+                    with urllib.request.urlopen(req_font, timeout=15) as font_res:
                         font_data = font_res.read()
 
                     with open(out_path, "wb") as f:
@@ -1747,36 +1773,36 @@ class MuxerApp(ctk.CTk):
 
         # --- Standard Muxing Logic (Batch & Single) ---
         VIDEO_DIR = (
-            Path(self.video_dir_var.get())
+            Path(config["video_dir"])
             if is_batch
             else (
-                Path(self.single_video_var.get().strip()).parent
-                if self.single_video_var.get().strip()
-                else Path(self.video_dir_var.get())
+                Path(config["single_video"].strip()).parent
+                if config["single_video"].strip()
+                else Path(config["video_dir"])
             )
         )
-        SUB_DIR = Path(self.sub_dir_var.get()) if is_batch else None
-        FONT_DIR = Path(self.font_dir_var.get())
+        SUB_DIR = Path(config["sub_dir"]) if is_batch else None
+        FONT_DIR = Path(config["font_dir"])
         SUB_EXTENSIONS = {".ass", ".ssa", ".srt", ".vtt", ".sub"}
         SUB_PREFERENCE = {".ass": 0, ".ssa": 1, ".srt": 2, ".vtt": 3, ".sub": 4}
 
-        series_name = self.series_name_var.get().strip()
-        output_template = self.output_template_var.get().strip()
-        jump_points_data = self.jump_points if self.add_jump_points_var.get() else []
+        series_name = config["series_name"].strip()
+        output_template = config["output_template"].strip()
+        jump_points_data = config["jump_points"] if config["add_jump_points"] else []
 
         chapter_file = None
         if jump_points_data:
             self.log("Processing jump points...")
             jump_points_data = sorted(jump_points_data, key=lambda x: x["ms"])
             chapter_file = VIDEO_DIR / ".jump_points.ffmeta"
-            text = ";FFMETADATA1\n"
+            text = ";FFMETADATA1\n\n"
             for i, jp in enumerate(jump_points_data):
                 end_ms = (
                     jump_points_data[i + 1]["ms"]
                     if i + 1 < len(jump_points_data)
-                    else 999999999
+                    else jp["ms"] + 300000  # Add a safe default end duration
                 )
-                text += f"\n[CHAPTER]\nTIMEBASE=1/1000\nSTART={jp['ms']}\nEND={end_ms}\ntitle={jp['title']}\n"
+                text += f"[CHAPTER]\nTIMEBASE=1/1000\nSTART={jp['ms']}\nEND={end_ms}\ntitle={jp['title']}\n\n"
             chapter_file.write_text(text, encoding="utf-8")
 
         fonts = (
@@ -1806,6 +1832,7 @@ class MuxerApp(ctk.CTk):
                     and p.name != "test.mkv"
                     and not p.name.startswith("temp_")
                     and not p.name.startswith(".mux_")
+                    and not p.stem.endswith("_muxed")
                 ],
                 key=lambda p: p.name.lower(),
             )
@@ -1874,10 +1901,7 @@ class MuxerApp(ctk.CTk):
                         break
                     paired.append((v, rem_s[i], i + 1))
         else:
-            vp, sp = (
-                self.single_video_var.get().strip(),
-                self.single_sub_var.get().strip(),
-            )
+            vp, sp = config["single_video"].strip(), config["single_sub"].strip()
             if not vp or not sp:
                 self.log("[ERROR] Please select both a video and subtitle file.")
                 return
@@ -1901,13 +1925,8 @@ class MuxerApp(ctk.CTk):
         for sub_file in sub_files_to_check:
             if sub_file.suffix.lower() not in {".ass", ".ssa"}:
                 continue
-            try:
-                content = sub_file.read_text(encoding="utf-8-sig", errors="ignore")
-            except Exception:
-                try:
-                    content = sub_file.read_text(encoding="cp1252", errors="ignore")
-                except Exception:
-                    continue
+
+            content, _ = self._read_subtitle(sub_file)
 
             in_styles = False
             font_idx = -1
@@ -1987,8 +2006,10 @@ class MuxerApp(ctk.CTk):
             except KeyError as e:
                 self.log(f"[ERROR] Unknown template variable: {e}")
                 out_name = video.stem
+
             if not out_name.lower().endswith(".mkv"):
                 out_name += ".mkv"
+
             final_out, temp_out = (
                 VIDEO_DIR / out_name,
                 VIDEO_DIR / f".mux_{video.stem}.mkv",
@@ -2013,6 +2034,8 @@ class MuxerApp(ctk.CTk):
                 "0:a?",
                 "-map",
                 "1:0",
+                "-map",
+                "0:t?",  # Keep source video attachments/fonts
                 "-map_metadata",
                 "0",
             ]
@@ -2059,17 +2082,23 @@ class MuxerApp(ctk.CTk):
                 text=True,
                 creationflags=CREATE_NO_WINDOW,
             )
+
+            err_log = ""
             cancelled = False
-            while process.poll() is None:
-                if self.cancel_event.is_set():
-                    process.terminate()
-                    try:
-                        process.wait(timeout=2)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                    cancelled = True
+            while True:
+                try:
+                    out, err = process.communicate(timeout=0.2)
+                    err_log += err or ""
                     break
-                time.sleep(0.2)
+                except subprocess.TimeoutExpired:
+                    if self.cancel_event.is_set():
+                        process.terminate()
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                        cancelled = True
+                        break
 
             if cancelled:
                 self.log(f"[EP{ep:02d}] Cancelled by user.")
@@ -2079,18 +2108,33 @@ class MuxerApp(ctk.CTk):
 
             if process.returncode != 0:
                 self.log(f"[EP{ep:02d}] Failed!")
-                stderr = process.stderr.read()
-                if stderr:
-                    for line in stderr.strip().split("\n")[:3]:
+                if err_log:
+                    for line in err_log.strip().split("\n")[:3]:
                         self.log(f"  FFmpeg Error: {line}")
                 if temp_out.exists():
                     temp_out.unlink()
             else:
-                if final_out.exists() and final_out.resolve() != video.resolve():
-                    final_out.unlink()
-                if temp_out.exists():
-                    video.unlink()
+                # Apply replacement rules
+                if final_out.resolve() == video.resolve():
+                    if config["replace_original"]:
+                        video.unlink()
+                        temp_out.replace(final_out)
+                    else:
+                        final_out = VIDEO_DIR / f"{video.stem}_muxed.mkv"
+                        if final_out.exists():
+                            final_out.unlink()
+                        temp_out.replace(final_out)
+                else:
+                    if final_out.exists():
+                        final_out.unlink()
                     temp_out.replace(final_out)
+                    if (
+                        config["replace_original"]
+                        and video.exists()
+                        and final_out.resolve() != video.resolve()
+                    ):
+                        video.unlink()
+
                 self.log(f"[EP{ep:02d}] Done.")
 
         if chapter_file and chapter_file.exists():
