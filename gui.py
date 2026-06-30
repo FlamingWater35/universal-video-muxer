@@ -28,7 +28,7 @@ class MuxerApp(ctk.CTk):
 
         self.title("Universal Video Muxer")
         self.geometry("900x900")
-        self.minsize(800, 700)
+        self.minsize(700, 700)
 
         # --- Main Scrollable Container ---
         self.main_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
