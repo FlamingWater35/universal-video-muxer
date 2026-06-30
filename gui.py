@@ -9,6 +9,10 @@ import time
 import tkinter as tk
 from tkinter import filedialog
 import tkinter.messagebox as messagebox
+import urllib.request
+import urllib.parse
+import urllib.error
+import ssl
 
 # Hide console windows for subprocesses on Windows
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -106,6 +110,13 @@ class MuxerApp(ctk.CTk):
         self.edit_single_sub_var = ctk.StringVar()
         self.edit_type_var = ctk.StringVar(value="Folder")
 
+        self.download_sub_dir_var = ctk.StringVar(value=str(Path(base_dir) / "sub"))
+        self.download_single_sub_var = ctk.StringVar()
+        self.download_type_var = ctk.StringVar(value="Folder")
+        self.download_out_dir_var = ctk.StringVar(
+            value=str(Path(base_dir) / "sub" / "fonts")
+        )
+
         self.series_name_var = ctk.StringVar()
         self.output_template_var = ctk.StringVar()
         self.mode_var = ctk.StringVar(value="Batch Mode")
@@ -122,6 +133,7 @@ class MuxerApp(ctk.CTk):
                 "Copy Subtitles Mode",
                 "Remove Subtitles Mode",
                 "Edit Fonts Mode",
+                "Download Fonts Mode",
             ],
             variable=self.mode_var,
             command=self.on_mode_change,
@@ -349,6 +361,65 @@ class MuxerApp(ctk.CTk):
 
         self.toggle_edit_source()  # Initialize visibility
 
+        # --- Download Fonts Mode UI ---
+        self.download_fonts_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
+
+        dl_rb_frame = ctk.CTkFrame(self.download_fonts_ui, fg_color="transparent")
+        dl_rb_frame.pack(fill="x", padx=10, pady=(10, 5))
+        ctk.CTkLabel(dl_rb_frame, text="Source Type:", width=150, anchor="w").pack(
+            side="left", padx=(0, 10)
+        )
+        self.dl_folder_rb = ctk.CTkRadioButton(
+            dl_rb_frame,
+            text="Subtitle Folder",
+            variable=self.download_type_var,
+            value="Folder",
+            command=self.toggle_download_source,
+        )
+        self.dl_folder_rb.pack(side="left", padx=10)
+        self.dl_file_rb = ctk.CTkRadioButton(
+            dl_rb_frame,
+            text="Single Subtitle File",
+            variable=self.download_type_var,
+            value="File",
+            command=self.toggle_download_source,
+        )
+        self.dl_file_rb.pack(side="left", padx=10)
+        self.editable_widgets.extend([self.dl_folder_rb, self.dl_file_rb])
+
+        self.dl_folder_frame = ctk.CTkFrame(
+            self.download_fonts_ui, fg_color="transparent"
+        )
+        create_dir_row(
+            self.dl_folder_frame, "Subtitle Directory:", self.download_sub_dir_var
+        )
+
+        self.dl_file_frame = ctk.CTkFrame(
+            self.download_fonts_ui, fg_color="transparent"
+        )
+        create_file_row(
+            self.dl_file_frame,
+            "Subtitle File:",
+            self.download_single_sub_var,
+            "Subtitle",
+        )
+
+        self.dl_out_frame = ctk.CTkFrame(self.download_fonts_ui, fg_color="transparent")
+        create_dir_row(
+            self.dl_out_frame, "Output Directory:", self.download_out_dir_var
+        )
+
+        self.dl_btn = ctk.CTkButton(
+            self.download_fonts_ui,
+            text="Scan & Download Fonts",
+            command=self.start_muxing,
+            width=200,
+        )
+        self.dl_btn.pack(pady=10)
+        self.editable_widgets.append(self.dl_btn)
+
+        self.toggle_download_source()
+
         self.batch_ui.pack(fill="x")  # Default
 
         # --- Font Directory (Shared) ---
@@ -514,6 +585,14 @@ class MuxerApp(ctk.CTk):
             )
 
     # --- Core Methods ---
+    def toggle_download_source(self):
+        if self.download_type_var.get() == "Folder":
+            self.dl_folder_frame.pack(fill="x", pady=4)
+            self.dl_file_frame.pack_forget()
+        else:
+            self.dl_folder_frame.pack_forget()
+            self.dl_file_frame.pack(fill="x", pady=4)
+
     def ask_confirmation(self, title, message):
         self.confirm_event.clear()
         self.confirm_result = False
@@ -719,6 +798,7 @@ class MuxerApp(ctk.CTk):
         self.copy_subs_ui.pack_forget()
         self.remove_subs_ui.pack_forget()
         self.edit_fonts_ui.pack_forget()
+        self.download_fonts_ui.pack_forget()
 
         self.font_frame.pack_forget()
         self.settings_frame.pack_forget()
@@ -734,11 +814,14 @@ class MuxerApp(ctk.CTk):
             self.remove_subs_ui.pack(fill="x")
         elif value == "Edit Fonts Mode":
             self.edit_fonts_ui.pack(fill="x")
+        elif value == "Download Fonts Mode":
+            self.download_fonts_ui.pack(fill="x")
 
         if value not in [
             "Edit Fonts Mode",
             "Remove Subtitles Mode",
             "Copy Subtitles Mode",
+            "Download Fonts Mode",
         ]:
             self.font_frame.pack(fill="x", padx=15, pady=5)
             self.settings_frame.pack(fill="x", padx=15, pady=10)
@@ -841,7 +924,7 @@ class MuxerApp(ctk.CTk):
 
     def start_muxing(self):
         mode = self.mode_var.get()
-        if mode != "Edit Fonts Mode":
+        if mode not in ["Edit Fonts Mode", "Download Fonts Mode"]:
             if not self.ffmpeg_path or not self.ffprobe_path:
                 self.log(
                     "\n[ERROR] Cannot start operation. ffmpeg or ffprobe is missing."
@@ -882,6 +965,7 @@ class MuxerApp(ctk.CTk):
         is_copy_subs = mode == "Copy Subtitles Mode"
         is_remove_subs = mode == "Remove Subtitles Mode"
         is_edit_fonts = mode == "Edit Fonts Mode"
+        is_download_fonts = mode == "Download Fonts Mode"
 
         VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".mov", ".avi", ".webm"}
         MUX_TAG = "universal_mux_v1"
@@ -1367,6 +1451,205 @@ class MuxerApp(ctk.CTk):
                 self.log(
                     f"\nFinished! Successfully edited {success_count} out of {len(sub_files)} files."
                 )
+            return
+
+        # --- Download Fonts Mode Logic ---
+        if is_download_fonts:
+            source_type = self.download_type_var.get()
+            out_dir = Path(self.download_out_dir_var.get())
+
+            if not out_dir.exists():
+                try:
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    self.log(f"[ERROR] Could not create output directory: {e}")
+                    return
+
+            sub_files = []
+            if source_type == "Folder":
+                sub_dir = Path(self.download_sub_dir_var.get())
+                if not sub_dir.exists():
+                    self.log("[ERROR] Subtitle directory does not exist.")
+                    return
+                sub_files = [
+                    p
+                    for p in sub_dir.rglob("*")
+                    if p.is_file() and p.suffix.lower() in {".ass", ".ssa"}
+                ]
+            else:
+                sub_file = Path(self.download_single_sub_var.get().strip())
+                if not sub_file.exists():
+                    self.log("[ERROR] Subtitle file does not exist.")
+                    return
+                if sub_file.suffix.lower() in {".ass", ".ssa"}:
+                    sub_files = [sub_file]
+                else:
+                    self.log("[ERROR] Only .ass and .ssa files are supported.")
+                    return
+
+            if not sub_files:
+                self.log("No subtitle files found to scan.")
+                return
+
+            fonts_needed = set()
+            for f in sub_files:
+                try:
+                    content = f.read_text(encoding="utf-8-sig", errors="ignore")
+                except Exception:
+                    try:
+                        content = f.read_text(encoding="cp1252", errors="ignore")
+                    except Exception:
+                        continue
+
+                in_styles = False
+                font_idx = -1
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("[V4") or stripped.startswith("[V4+"):
+                        in_styles = True
+                        font_idx = -1
+                        continue
+                    if stripped.startswith("[") and in_styles:
+                        in_styles = False
+                        continue
+
+                    if in_styles:
+                        if stripped.lower().startswith("format:"):
+                            parts = [p.strip().lower() for p in stripped[7:].split(",")]
+                            if "fontname" in parts:
+                                font_idx = parts.index("fontname")
+                        elif stripped.lower().startswith("style:"):
+                            if font_idx != -1:
+                                parts = [p.strip() for p in stripped[6:].split(",")]
+                                if len(parts) > font_idx:
+                                    fonts_needed.add(parts[font_idx])
+
+            if not fonts_needed:
+                self.log("No fonts found in the selected subtitle(s).")
+                return
+
+            self.log(f"Found {len(fonts_needed)} unique font(s) to download.\n")
+            total_items = len(fonts_needed)
+            self.after(0, self.update_progress, 0, total_items)
+
+            success_count = 0
+            failed_fonts = []
+
+            def parse_font_for_google_fonts(font_name):
+                font_name = font_name.strip()
+                weights = {
+                    "thin": 100,
+                    "hairline": 100,
+                    "extralight": 200,
+                    "ultralight": 200,
+                    "light": 300,
+                    "regular": 400,
+                    "normal": 400,
+                    "medium": 500,
+                    "semibold": 600,
+                    "demibold": 600,
+                    "bold": 700,
+                    "extrabold": 800,
+                    "ultrabold": 800,
+                    "black": 900,
+                    "heavy": 900,
+                }
+                name_lower = font_name.lower()
+                for w_name, w_val in sorted(
+                    weights.items(), key=lambda x: len(x[0]), reverse=True
+                ):
+                    if name_lower.endswith(f" {w_name}"):
+                        family = font_name[: -(len(w_name) + 1)].strip()
+                        return family, w_val
+                    elif name_lower.endswith(w_name) and len(font_name) > len(w_name):
+                        if not font_name[-len(w_name) - 1].isalpha():
+                            family = font_name[: -(len(w_name) + 1)].strip("-_ ")
+                            return family, w_val
+                return font_name, 400
+
+            for i, font_name in enumerate(sorted(fonts_needed)):
+                if self.cancel_event.is_set():
+                    self.log("\n[CANCELLED] Operation cancelled by user.")
+                    break
+
+                self.after(0, self.update_progress, i + 1, total_items)
+
+                family, wght = parse_font_for_google_fonts(font_name)
+                self.log(
+                    f"Searching for: {font_name} (Family: {family}, Weight: {wght})"
+                )
+
+                family_url = urllib.parse.quote(family)
+                url = f"https://fonts.googleapis.com/css?family={family_url}:{wght}"
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/531.21.8 (KHTML, like Gecko) Version/4.0.4 Safari/531.21.10"
+                }
+
+                try:
+                    req = urllib.request.Request(url, headers=headers)
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+
+                    with urllib.request.urlopen(
+                        req, context=ctx, timeout=10
+                    ) as response:
+                        css_content = response.read().decode("utf-8")
+
+                    if not css_content or "@font-face" not in css_content:
+                        url_fallback = (
+                            f"https://fonts.googleapis.com/css?family={family_url}"
+                        )
+                        req = urllib.request.Request(url_fallback, headers=headers)
+                        with urllib.request.urlopen(
+                            req, context=ctx, timeout=10
+                        ) as response:
+                            css_content = response.read().decode("utf-8")
+
+                    urls = re.findall(r"url\((.*?)\)", css_content)
+                    if not urls:
+                        self.log(f"  [FAILED] Could not extract font URL from CSS.")
+                        failed_fonts.append(font_name)
+                        continue
+
+                    font_url = urls[0]
+                    ext = font_url.split(".")[-1]
+                    if "?" in ext:
+                        ext = ext.split("?")[0]
+                    if len(ext) > 5 or not ext.isalnum():
+                        ext = "ttf"
+                    safe_filename = re.sub(r'[\\/*?:"<>|]', "", font_name) + f".{ext}"
+                    out_path = out_dir / safe_filename
+
+                    if out_path.exists():
+                        self.log(f"  [SKIP] {safe_filename} already exists.")
+                        success_count += 1
+                        continue
+
+                    req_font = urllib.request.Request(font_url)
+                    with urllib.request.urlopen(
+                        req_font, context=ctx, timeout=15
+                    ) as font_res:
+                        font_data = font_res.read()
+
+                    with open(out_path, "wb") as f:
+                        f.write(font_data)
+                    self.log(f"  [DONE] Saved as {safe_filename}")
+                    success_count += 1
+
+                except urllib.error.HTTPError as e:
+                    self.log(f"  [FAILED] HTTP Error {e.code}: {e.reason}")
+                    failed_fonts.append(font_name)
+                except Exception as e:
+                    self.log(f"  [ERROR] Network exception: {e}")
+                    failed_fonts.append(font_name)
+
+            if not self.cancel_event.is_set():
+                self.log(
+                    f"\nFinished! Successfully downloaded {success_count} out of {len(fonts_needed)} fonts."
+                )
+                if failed_fonts:
+                    self.log(f"Could not download: {', '.join(sorted(failed_fonts))}")
             return
 
         # --- Standard Muxing Logic (Batch & Single) ---
