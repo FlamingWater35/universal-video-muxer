@@ -551,11 +551,11 @@ class MuxerApp(ctk.CTk):
         self.replace_original_var = ctk.BooleanVar(value=False)
         self.replace_cb = ctk.CTkCheckBox(
             self.options_frame,
-            text="Replace Original Video (Destructive - OVERWRITES Source)",
+            text="Replace Original Video (instead of creating a copy)",
             variable=self.replace_original_var,
             text_color="#D9534F",
         )
-        self.replace_cb.pack(side="left")
+        self.replace_cb.pack(side="left", padx=5, pady=5)
         self.editable_widgets.append(self.replace_cb)
 
         self.buttons_frame = ctk.CTkFrame(self.ctrl_frame, fg_color="transparent")
@@ -937,6 +937,7 @@ class MuxerApp(ctk.CTk):
 
         self.settings_card.pack_forget()
         self.jump_card.pack_forget()
+        self.options_frame.pack_forget()  # Hide replace options by default
 
         if value == "Batch Mode":
             self.batch_ui.pack(fill="x", pady=(0, 10))
@@ -959,6 +960,11 @@ class MuxerApp(ctk.CTk):
         ]:
             self.settings_card.pack(fill="x", padx=10, pady=10, before=self.ctrl_frame)
             self.jump_card.pack(fill="x", padx=10, pady=10, before=self.ctrl_frame)
+
+        if value in ["Batch Mode", "Single File", "Copy Subtitles", "Remove Subtitles"]:
+            self.options_frame.pack(
+                side="top", fill="x", pady=(0, 10), before=self.buttons_frame
+            )
 
     def toggle_jump_points(self):
         if self.add_jump_points_var.get():
