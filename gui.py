@@ -147,11 +147,11 @@ class MuxerApp(ctk.CTk):
             self.mode_card,
             values=[
                 "Batch Mode",
-                "Single File Mode",
-                "Copy Subtitles Mode",
-                "Remove Subtitles Mode",
-                "Edit Fonts Mode",
-                "Download Fonts Mode",
+                "Single File",
+                "Copy Subtitles",
+                "Remove Subtitles",
+                "Edit Fonts",
+                "Download Fonts",
             ],
             variable=self.mode_var,
             command=self.on_mode_change,
@@ -946,22 +946,22 @@ class MuxerApp(ctk.CTk):
 
         if value == "Batch Mode":
             self.batch_ui.pack(fill="x", pady=(0, 10))
-        elif value == "Single File Mode":
+        elif value == "Single File":
             self.single_ui.pack(fill="x", pady=(0, 10))
-        elif value == "Copy Subtitles Mode":
+        elif value == "Copy Subtitles":
             self.copy_subs_ui.pack(fill="x", pady=(0, 10))
-        elif value == "Remove Subtitles Mode":
+        elif value == "Remove Subtitles":
             self.remove_subs_ui.pack(fill="x", pady=(0, 10))
-        elif value == "Edit Fonts Mode":
+        elif value == "Edit Fonts":
             self.edit_fonts_ui.pack(fill="x", pady=(0, 10))
-        elif value == "Download Fonts Mode":
+        elif value == "Download Fonts":
             self.download_fonts_ui.pack(fill="x", pady=(0, 10))
 
         if value not in [
-            "Edit Fonts Mode",
-            "Remove Subtitles Mode",
-            "Copy Subtitles Mode",
-            "Download Fonts Mode",
+            "Edit Fonts",
+            "Remove Subtitles",
+            "Copy Subtitles",
+            "Download Fonts",
         ]:
             self.settings_card.pack(fill="x", padx=10, pady=10, before=self.ctrl_frame)
             self.jump_card.pack(fill="x", padx=10, pady=10, before=self.ctrl_frame)
@@ -1069,7 +1069,7 @@ class MuxerApp(ctk.CTk):
 
     def start_muxing(self):
         mode = self.mode_var.get()
-        if mode not in ["Edit Fonts Mode", "Download Fonts Mode"]:
+        if mode not in ["Edit Fonts", "Download Fonts"]:
             if not self.ffmpeg_path or not self.ffprobe_path:
                 self.log(
                     "\n[ERROR] Cannot start operation. ffmpeg or ffprobe is missing."
@@ -1107,10 +1107,10 @@ class MuxerApp(ctk.CTk):
         ffmpeg_path, ffprobe_path = self.ffmpeg_path, self.ffprobe_path
         mode = self.mode_var.get()
         is_batch = mode == "Batch Mode"
-        is_copy_subs = mode == "Copy Subtitles Mode"
-        is_remove_subs = mode == "Remove Subtitles Mode"
-        is_edit_fonts = mode == "Edit Fonts Mode"
-        is_download_fonts = mode == "Download Fonts Mode"
+        is_copy_subs = mode == "Copy Subtitles"
+        is_remove_subs = mode == "Remove Subtitles"
+        is_edit_fonts = mode == "Edit Fonts"
+        is_download_fonts = mode == "Download Fonts"
 
         VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".mov", ".avi", ".webm"}
         MUX_TAG = "universal_mux_v1"
