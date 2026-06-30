@@ -99,6 +99,10 @@ class MuxerApp(ctk.CTk):
         self.source_sub_dir_var = ctk.StringVar(value=base_dir)
         self.target_sub_dir_var = ctk.StringVar(value=base_dir)
 
+        self.edit_sub_dir_var = ctk.StringVar(value=str(Path(base_dir) / "sub"))
+        self.edit_single_sub_var = ctk.StringVar()
+        self.edit_type_var = ctk.StringVar(value="Folder")
+
         self.series_name_var = ctk.StringVar()
         self.output_template_var = ctk.StringVar()
         self.mode_var = ctk.StringVar(value="Batch Mode")
@@ -114,6 +118,7 @@ class MuxerApp(ctk.CTk):
                 "Single File Mode",
                 "Copy Subtitles Mode",
                 "Remove Subtitles Mode",
+                "Edit Fonts Mode",
             ],
             variable=self.mode_var,
             command=self.on_mode_change,
@@ -147,34 +152,120 @@ class MuxerApp(ctk.CTk):
         self.remove_subs_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
         create_dir_row(self.remove_subs_ui, "Video Directory:", self.video_dir_var)
 
+        # --- Edit Fonts Mode UI ---
+        self.edit_fonts_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
+
+        rb_frame = ctk.CTkFrame(self.edit_fonts_ui, fg_color="transparent")
+        rb_frame.pack(fill="x", padx=10, pady=(10, 5))
+        ctk.CTkLabel(rb_frame, text="Source Type:", width=150, anchor="w").pack(
+            side="left", padx=(0, 10)
+        )
+        self.edit_folder_rb = ctk.CTkRadioButton(
+            rb_frame,
+            text="Subtitle Folder",
+            variable=self.edit_type_var,
+            value="Folder",
+            command=self.toggle_edit_source,
+        )
+        self.edit_folder_rb.pack(side="left", padx=10)
+        self.edit_file_rb = ctk.CTkRadioButton(
+            rb_frame,
+            text="Single Subtitle File",
+            variable=self.edit_type_var,
+            value="File",
+            command=self.toggle_edit_source,
+        )
+        self.edit_file_rb.pack(side="left", padx=10)
+        self.editable_widgets.extend([self.edit_folder_rb, self.edit_file_rb])
+
+        self.edit_folder_frame = ctk.CTkFrame(
+            self.edit_fonts_ui, fg_color="transparent"
+        )
+        create_dir_row(
+            self.edit_folder_frame, "Subtitle Directory:", self.edit_sub_dir_var
+        )
+
+        self.edit_file_frame = ctk.CTkFrame(self.edit_fonts_ui, fg_color="transparent")
+        create_file_row(
+            self.edit_file_frame, "Subtitle File:", self.edit_single_sub_var, "Subtitle"
+        )
+
+        self.scan_btn = ctk.CTkButton(
+            self.edit_fonts_ui,
+            text="Scan Subtitles for Fonts",
+            command=self.scan_fonts,
+            width=200,
+        )
+        self.scan_btn.pack(pady=10)
+        self.editable_widgets.append(self.scan_btn)
+
+        self.font_editor_frame = ctk.CTkScrollableFrame(self.edit_fonts_ui, height=200)
+        self.font_editor_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        self.font_mapping_vars = {}
+        self.common_fonts = [
+            "Arial",
+            "Times New Roman",
+            "Helvetica",
+            "Verdana",
+            "Tahoma",
+            "Trebuchet MS",
+            "Georgia",
+            "Comic Sans MS",
+            "Impact",
+            "Courier New",
+            "Lucida Console",
+            "Segoe UI",
+            "Roboto",
+            "Open Sans",
+            "Noto Sans",
+            "Source Sans Pro",
+            "Meiryo",
+            "Yu Gothic",
+            "MS PGothic",
+            "Malgun Gothic",
+            "Avenir",
+            "Futura",
+            "Garamond",
+            "Baskerville",
+            "Century Gothic",
+            "Roboto Medium",
+            "Roboto Cn",
+            "CascadeScript",
+            "Pristina_Bold",
+        ]
+
+        self.toggle_edit_source()  # Initialize visibility
+
         self.batch_ui.pack(fill="x")  # Default
 
         # --- Font Directory (Shared) ---
-        font_frame = ctk.CTkFrame(self.main_scroll)
-        font_frame.pack(fill="x", padx=15, pady=5)
-        create_dir_row(font_frame, "Font Directory (Optional):", self.font_dir_var)
+        self.font_frame = ctk.CTkFrame(self.main_scroll)
+        self.font_frame.pack(fill="x", padx=15, pady=5)
+        create_dir_row(self.font_frame, "Font Directory (Optional):", self.font_dir_var)
 
         # --- Settings Frame ---
-        settings_frame = ctk.CTkFrame(self.main_scroll)
-        settings_frame.pack(fill="x", padx=15, pady=10)
+        self.settings_frame = ctk.CTkFrame(self.main_scroll)
+        self.settings_frame.pack(fill="x", padx=15, pady=10)
 
-        ctk.CTkLabel(settings_frame, text="Series Name (Optional):").pack(
+        ctk.CTkLabel(self.settings_frame, text="Series Name (Optional):").pack(
             anchor="w", padx=10, pady=(10, 0)
         )
         series_frame, _ = make_clearable_entry(
-            settings_frame, self.series_name_var, width=550
+            self.settings_frame, self.series_name_var, width=550
         )
         series_frame.pack(anchor="w", padx=10, pady=(0, 10))
 
         ctk.CTkLabel(
-            settings_frame, text="Output Template (Optional, e.g., {series} EP{ep2}):"
+            self.settings_frame,
+            text="Output Template (Optional, e.g., {series} EP{ep2}):",
         ).pack(anchor="w", padx=10, pady=(10, 0))
         template_frame, self.output_template_entry = make_clearable_entry(
-            settings_frame, self.output_template_var, width=550
+            self.settings_frame, self.output_template_var, width=550
         )
         template_frame.pack(anchor="w", padx=10, pady=(0, 5))
 
-        var_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        var_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
         var_frame.pack(anchor="w", padx=10, pady=(0, 10))
         for var in ["{series}", "{ep}", "{ep2}", "{video_stem}"]:
             btn = ctk.CTkButton(
@@ -251,7 +342,7 @@ class MuxerApp(ctk.CTk):
 
         self.start_btn = ctk.CTkButton(
             ctrl_frame,
-            text="Start Muxing",
+            text="Start Operation",
             command=self.start_muxing,
             height=40,
             font=ctk.CTkFont(size=14, weight="bold"),
@@ -311,6 +402,129 @@ class MuxerApp(ctk.CTk):
             )
 
     # --- Core Methods ---
+    def toggle_edit_source(self):
+        if self.edit_type_var.get() == "Folder":
+            self.edit_folder_frame.pack(fill="x", pady=4)
+            self.edit_file_frame.pack_forget()
+        else:
+            self.edit_folder_frame.pack_forget()
+            self.edit_file_frame.pack(fill="x", pady=4)
+
+    def scan_fonts(self):
+        source_type = self.edit_type_var.get()
+        sub_files = []
+        if source_type == "Folder":
+            sub_dir = Path(self.edit_sub_dir_var.get())
+            if not sub_dir.exists():
+                self.log("[ERROR] Subtitle directory does not exist.")
+                return
+            sub_files = [
+                p
+                for p in sub_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in {".ass", ".ssa"}
+            ]
+        else:
+            sub_file = Path(self.edit_single_sub_var.get().strip())
+            if not sub_file.exists():
+                self.log("[ERROR] Subtitle file does not exist.")
+                return
+            if sub_file.suffix.lower() in {".ass", ".ssa"}:
+                sub_files = [sub_file]
+            else:
+                self.log("[ERROR] Only .ass and .ssa files are supported.")
+                return
+
+        if not sub_files:
+            self.log("No subtitle files found to scan.")
+            return
+
+        fonts_found = set()
+        for f in sub_files:
+            try:
+                content = f.read_text(encoding="utf-8-sig", errors="ignore")
+            except Exception:
+                continue
+
+            in_styles = False
+            font_idx = -1
+            for line in content.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("[V4") or stripped.startswith("[V4+"):
+                    in_styles = True
+                    font_idx = -1
+                    continue
+                if stripped.startswith("[") and in_styles:
+                    in_styles = False
+                    continue
+
+                if in_styles:
+                    if stripped.lower().startswith("format:"):
+                        parts = [p.strip().lower() for p in stripped[7:].split(",")]
+                        if "fontname" in parts:
+                            font_idx = parts.index("fontname")
+                    elif stripped.lower().startswith("style:"):
+                        if font_idx != -1:
+                            parts = [p.strip() for p in stripped[6:].split(",")]
+                            if len(parts) > font_idx:
+                                fonts_found.add(parts[font_idx])
+
+        # Clear existing editor rows
+        for widget in self.font_editor_frame.winfo_children():
+            widget.destroy()
+        self.font_mapping_vars.clear()
+
+        if not fonts_found:
+            self.log("No fonts found in the selected subtitle(s).")
+            return
+
+        # Create header
+        header = ctk.CTkFrame(self.font_editor_frame, fg_color="transparent")
+        header.pack(fill="x", padx=5, pady=2)
+        ctk.CTkLabel(
+            header,
+            text="Original Font",
+            width=200,
+            anchor="w",
+            font=ctk.CTkFont(weight="bold"),
+        ).pack(side="left", padx=5)
+        ctk.CTkLabel(
+            header,
+            text="Replacement Font",
+            width=300,
+            anchor="w",
+            font=ctk.CTkFont(weight="bold"),
+        ).pack(side="left", padx=5)
+
+        for font in sorted(fonts_found):
+            row = ctk.CTkFrame(self.font_editor_frame, fg_color="transparent")
+            row.pack(fill="x", padx=5, pady=2)
+            ctk.CTkLabel(row, text=font, width=200, anchor="w").pack(
+                side="left", padx=5
+            )
+
+            var = ctk.StringVar(value=font)
+            combo = ctk.CTkComboBox(
+                row, variable=var, values=self.common_fonts, width=300
+            )
+            combo.pack(side="left", padx=5)
+            self.font_mapping_vars[font] = var
+
+            entry_widget = getattr(combo, "_entry", combo)
+            entry_widget.bind(
+                "<KeyRelease>", lambda e, c=combo: self.update_font_dropdown(c)
+            )
+
+        self.log(f"Scan complete. Found {len(fonts_found)} unique font(s).")
+
+    def update_font_dropdown(self, combo):
+        entry = getattr(combo, "_entry", None)
+        typed = entry.get().lower() if entry else combo.get().lower()
+        if not typed:
+            combo.configure(values=self.common_fonts)
+        else:
+            filtered = [f for f in self.common_fonts if typed in f.lower()]
+            combo.configure(values=filtered if filtered else self.common_fonts)
+
     def set_ui_state(self, state):
         for widget in self.editable_widgets:
             try:
@@ -379,6 +593,11 @@ class MuxerApp(ctk.CTk):
         self.single_ui.pack_forget()
         self.copy_subs_ui.pack_forget()
         self.remove_subs_ui.pack_forget()
+        self.edit_fonts_ui.pack_forget()
+
+        self.font_frame.pack_forget()
+        self.settings_frame.pack_forget()
+        self.jump_frame.pack_forget()
 
         if value == "Batch Mode":
             self.batch_ui.pack(fill="x")
@@ -388,6 +607,17 @@ class MuxerApp(ctk.CTk):
             self.copy_subs_ui.pack(fill="x")
         elif value == "Remove Subtitles Mode":
             self.remove_subs_ui.pack(fill="x")
+        elif value == "Edit Fonts Mode":
+            self.edit_fonts_ui.pack(fill="x")
+
+        if value not in [
+            "Edit Fonts Mode",
+            "Remove Subtitles Mode",
+            "Copy Subtitles Mode",
+        ]:
+            self.font_frame.pack(fill="x", padx=15, pady=5)
+            self.settings_frame.pack(fill="x", padx=15, pady=10)
+            self.jump_frame.pack(fill="x", padx=15, pady=10)
 
     def toggle_jump_points(self):
         if self.add_jump_points_var.get():
@@ -485,9 +715,14 @@ class MuxerApp(ctk.CTk):
         )
 
     def start_muxing(self):
-        if not self.ffmpeg_path or not self.ffprobe_path:
-            self.log("\n[ERROR] Cannot start muxing. ffmpeg or ffprobe is missing.")
-            return
+        mode = self.mode_var.get()
+        if mode != "Edit Fonts Mode":
+            if not self.ffmpeg_path or not self.ffprobe_path:
+                self.log(
+                    "\n[ERROR] Cannot start operation. ffmpeg or ffprobe is missing."
+                )
+                return
+
         self.cancel_event.clear()
 
         self.set_ui_state("disabled")
@@ -498,7 +733,7 @@ class MuxerApp(ctk.CTk):
         self.progress_frame.pack(fill="x", padx=15, pady=5, before=self.log_frame)
 
         self.log("=" * 40)
-        self.log("Starting muxing process...")
+        self.log("Starting operation...")
         threading.Thread(target=self.run_muxing_thread, daemon=True).start()
 
     def run_muxing_thread(self):
@@ -521,6 +756,7 @@ class MuxerApp(ctk.CTk):
         is_batch = mode == "Batch Mode"
         is_copy_subs = mode == "Copy Subtitles Mode"
         is_remove_subs = mode == "Remove Subtitles Mode"
+        is_edit_fonts = mode == "Edit Fonts Mode"
 
         VIDEO_EXTENSIONS = {".mkv", ".mp4", ".m4v", ".mov", ".avi", ".webm"}
         MUX_TAG = "universal_mux_v1"
@@ -862,6 +1098,149 @@ class MuxerApp(ctk.CTk):
             if not self.cancel_event.is_set():
                 self.log(
                     f"\nFinished! Successfully processed {success_count} out of {len(video_files)} videos."
+                )
+            return
+
+        # --- Edit Fonts Mode Logic ---
+        if is_edit_fonts:
+            source_type = self.edit_type_var.get()
+
+            font_map = {orig: var.get() for orig, var in self.font_mapping_vars.items()}
+
+            if not font_map:
+                self.log(
+                    "[ERROR] No font mappings found. Please scan the subtitles first."
+                )
+                return
+
+            sub_files = []
+            if source_type == "Folder":
+                sub_dir = Path(self.edit_sub_dir_var.get())
+                if not sub_dir.exists():
+                    self.log("[ERROR] Subtitle directory does not exist.")
+                    return
+                sub_files = [
+                    p
+                    for p in sub_dir.rglob("*")
+                    if p.is_file() and p.suffix.lower() in {".ass", ".ssa"}
+                ]
+            else:
+                sub_file = Path(self.edit_single_sub_var.get().strip())
+                if not sub_file.exists():
+                    self.log("[ERROR] Subtitle file does not exist.")
+                    return
+                if sub_file.suffix.lower() in {".ass", ".ssa"}:
+                    sub_files = [sub_file]
+                else:
+                    self.log(
+                        "[ERROR] Only .ass and .ssa files are supported for font editing."
+                    )
+                    return
+
+            if not sub_files:
+                self.log("No .ass or .ssa subtitle files found to edit.")
+                return
+
+            self.log(f"Found {len(sub_files)} subtitle file(s) to process.\n")
+            total_items = len(sub_files)
+            self.after(0, self.update_progress, 0, total_items)
+
+            success_count = 0
+            for i, sub_file in enumerate(sub_files):
+                if self.cancel_event.is_set():
+                    self.log("\n[CANCELLED] Operation cancelled by user.")
+                    break
+
+                self.after(0, self.update_progress, i + 1, total_items)
+                self.log(f"Editing fonts in: {sub_file.name}")
+
+                try:
+                    content = ""
+                    encoding_used = "utf-8-sig"
+                    try:
+                        with open(sub_file, "r", encoding="utf-8-sig") as f:
+                            content = f.read()
+                    except UnicodeDecodeError:
+                        try:
+                            with open(sub_file, "r", encoding="cp1252") as f:
+                                content = f.read()
+                            encoding_used = "cp1252"
+                        except Exception as e:
+                            self.log(f"  [ERROR] Could not read file: {e}")
+                            continue
+
+                    lines = content.splitlines(True)
+                    in_styles_section = False
+                    modified = False
+                    font_idx = -1
+
+                    new_lines = []
+                    for line in lines:
+                        stripped = line.strip()
+                        if stripped.startswith("[V4") or stripped.startswith("[V4+"):
+                            in_styles_section = True
+                            font_idx = -1
+                            new_lines.append(line)
+                            continue
+                        elif stripped.startswith("[") and in_styles_section:
+                            in_styles_section = False
+                            new_lines.append(line)
+                            continue
+
+                        if in_styles_section:
+                            if stripped.lower().startswith("format:"):
+                                parts = [
+                                    p.strip().lower() for p in stripped[7:].split(",")
+                                ]
+                                if "fontname" in parts:
+                                    font_idx = parts.index("fontname")
+                                new_lines.append(line)
+                                continue
+                            elif stripped.lower().startswith("style:"):
+                                m = re.match(
+                                    r"^(\s*Style:\s*)(.*?)(\r?\n?)$",
+                                    line,
+                                    re.IGNORECASE,
+                                )
+                                if m and font_idx != -1:
+                                    prefix = m.group(1)
+                                    values_str = m.group(2)
+                                    newline = m.group(3)
+
+                                    parts = values_str.split(",")
+
+                                    if len(parts) > font_idx:
+                                        orig_font = parts[font_idx].strip()
+                                        if orig_font in font_map:
+                                            new_font = font_map[orig_font]
+                                            if orig_font != new_font:
+                                                parts[font_idx] = parts[
+                                                    font_idx
+                                                ].replace(orig_font, new_font)
+                                                new_line = (
+                                                    prefix + ",".join(parts) + newline
+                                                )
+                                                new_lines.append(new_line)
+                                                modified = True
+                                                continue
+                        new_lines.append(line)
+
+                    if modified:
+                        with open(sub_file, "w", encoding=encoding_used) as f:
+                            f.writelines(new_lines)
+                        self.log(f"  [DONE] Updated fonts based on mapping.")
+                        success_count += 1
+                    else:
+                        self.log(
+                            f"  [SKIP] No mapped fonts required updating in this file."
+                        )
+
+                except Exception as e:
+                    self.log(f"  [ERROR] Failed to process file: {e}")
+
+            if not self.cancel_event.is_set():
+                self.log(
+                    f"\nFinished! Successfully edited {success_count} out of {len(sub_files)} files."
                 )
             return
 
