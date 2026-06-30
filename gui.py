@@ -409,14 +409,21 @@ class MuxerApp(ctk.CTk):
             self.dl_out_frame, "Output Directory:", self.download_out_dir_var
         )
 
-        self.dl_btn = ctk.CTkButton(
+        self.dl_scan_btn = ctk.CTkButton(
             self.download_fonts_ui,
-            text="Scan & Download Fonts",
-            command=self.start_muxing,
+            text="Scan Subtitles for Fonts",
+            command=self.scan_download_fonts,
             width=200,
         )
-        self.dl_btn.pack(pady=10)
-        self.editable_widgets.append(self.dl_btn)
+        self.dl_scan_btn.pack(pady=10)
+        self.editable_widgets.append(self.dl_scan_btn)
+
+        self.dl_font_list_frame = ctk.CTkScrollableFrame(
+            self.download_fonts_ui, height=200
+        )
+        self.dl_font_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        self.dl_font_vars = {}
 
         self.toggle_download_source()
 
@@ -592,6 +599,86 @@ class MuxerApp(ctk.CTk):
         else:
             self.dl_folder_frame.pack_forget()
             self.dl_file_frame.pack(fill="x", pady=4)
+
+    def scan_download_fonts(self):
+        source_type = self.download_type_var.get()
+        sub_files = []
+        if source_type == "Folder":
+            sub_dir = Path(self.download_sub_dir_var.get())
+            if not sub_dir.exists():
+                self.log("[ERROR] Subtitle directory does not exist.")
+                return
+            sub_files = [
+                p
+                for p in sub_dir.rglob("*")
+                if p.is_file() and p.suffix.lower() in {".ass", ".ssa"}
+            ]
+        else:
+            sub_file = Path(self.download_single_sub_var.get().strip())
+            if not sub_file.exists():
+                self.log("[ERROR] Subtitle file does not exist.")
+                return
+            if sub_file.suffix.lower() in {".ass", ".ssa"}:
+                sub_files = [sub_file]
+            else:
+                self.log("[ERROR] Only .ass and .ssa files are supported.")
+                return
+
+        if not sub_files:
+            self.log("No subtitle files found to scan.")
+            return
+
+        fonts_found = set()
+        for f in sub_files:
+            try:
+                content = f.read_text(encoding="utf-8-sig", errors="ignore")
+            except Exception:
+                try:
+                    content = f.read_text(encoding="cp1252", errors="ignore")
+                except Exception:
+                    continue
+
+            in_styles = False
+            font_idx = -1
+            for line in content.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("[V4") or stripped.startswith("[V4+"):
+                    in_styles = True
+                    font_idx = -1
+                    continue
+                if stripped.startswith("[") and in_styles:
+                    in_styles = False
+                    continue
+
+                if in_styles:
+                    if stripped.lower().startswith("format:"):
+                        parts = [p.strip().lower() for p in stripped[7:].split(",")]
+                        if "fontname" in parts:
+                            font_idx = parts.index("fontname")
+                    elif stripped.lower().startswith("style:"):
+                        if font_idx != -1:
+                            parts = [p.strip() for p in stripped[6:].split(",")]
+                            if len(parts) > font_idx:
+                                fonts_found.add(parts[font_idx])
+
+        for widget in self.dl_font_list_frame.winfo_children():
+            widget.destroy()
+        self.dl_font_vars.clear()
+
+        if not fonts_found:
+            self.log("No fonts found in the selected subtitle(s).")
+            return
+
+        for font in sorted(fonts_found):
+            var = ctk.BooleanVar(value=True)
+            cb = ctk.CTkCheckBox(self.dl_font_list_frame, text=font, variable=var)
+            cb.pack(anchor="w", padx=10, pady=2)
+            self.dl_font_vars[font] = var
+            self.editable_widgets.append(cb)
+
+        self.log(
+            f"Scan complete. Found {len(fonts_found)} unique font(s). Uncheck any you don't need, then click 'Start Operation'."
+        )
 
     def ask_confirmation(self, title, message):
         self.confirm_event.clear()
@@ -1455,7 +1542,17 @@ class MuxerApp(ctk.CTk):
 
         # --- Download Fonts Mode Logic ---
         if is_download_fonts:
-            source_type = self.download_type_var.get()
+            if not self.dl_font_vars:
+                self.log("[ERROR] No fonts scanned. Please scan the subtitles first.")
+                return
+
+            fonts_to_download = [
+                font for font, var in self.dl_font_vars.items() if var.get()
+            ]
+            if not fonts_to_download:
+                self.log("[ERROR] No fonts selected for download.")
+                return
+
             out_dir = Path(self.download_out_dir_var.get())
 
             if not out_dir.exists():
@@ -1465,71 +1562,8 @@ class MuxerApp(ctk.CTk):
                     self.log(f"[ERROR] Could not create output directory: {e}")
                     return
 
-            sub_files = []
-            if source_type == "Folder":
-                sub_dir = Path(self.download_sub_dir_var.get())
-                if not sub_dir.exists():
-                    self.log("[ERROR] Subtitle directory does not exist.")
-                    return
-                sub_files = [
-                    p
-                    for p in sub_dir.rglob("*")
-                    if p.is_file() and p.suffix.lower() in {".ass", ".ssa"}
-                ]
-            else:
-                sub_file = Path(self.download_single_sub_var.get().strip())
-                if not sub_file.exists():
-                    self.log("[ERROR] Subtitle file does not exist.")
-                    return
-                if sub_file.suffix.lower() in {".ass", ".ssa"}:
-                    sub_files = [sub_file]
-                else:
-                    self.log("[ERROR] Only .ass and .ssa files are supported.")
-                    return
-
-            if not sub_files:
-                self.log("No subtitle files found to scan.")
-                return
-
-            fonts_needed = set()
-            for f in sub_files:
-                try:
-                    content = f.read_text(encoding="utf-8-sig", errors="ignore")
-                except Exception:
-                    try:
-                        content = f.read_text(encoding="cp1252", errors="ignore")
-                    except Exception:
-                        continue
-
-                in_styles = False
-                font_idx = -1
-                for line in content.splitlines():
-                    stripped = line.strip()
-                    if stripped.startswith("[V4") or stripped.startswith("[V4+"):
-                        in_styles = True
-                        font_idx = -1
-                        continue
-                    if stripped.startswith("[") and in_styles:
-                        in_styles = False
-                        continue
-
-                    if in_styles:
-                        if stripped.lower().startswith("format:"):
-                            parts = [p.strip().lower() for p in stripped[7:].split(",")]
-                            if "fontname" in parts:
-                                font_idx = parts.index("fontname")
-                        elif stripped.lower().startswith("style:"):
-                            if font_idx != -1:
-                                parts = [p.strip() for p in stripped[6:].split(",")]
-                                if len(parts) > font_idx:
-                                    fonts_needed.add(parts[font_idx])
-
-            if not fonts_needed:
-                self.log("No fonts found in the selected subtitle(s).")
-                return
-
-            self.log(f"Found {len(fonts_needed)} unique font(s) to download.\n")
-            total_items = len(fonts_needed)
+            self.log(f"Preparing to download {len(fonts_to_download)} font(s).\n")
+            total_items = len(fonts_to_download)
             self.after(0, self.update_progress, 0, total_items)
 
             success_count = 0
@@ -1567,7 +1601,7 @@ class MuxerApp(ctk.CTk):
                             return family, w_val
                 return font_name, 400
 
-            for i, font_name in enumerate(sorted(fonts_needed)):
+            for i, font_name in enumerate(sorted(fonts_to_download)):
                 if self.cancel_event.is_set():
                     self.log("\n[CANCELLED] Operation cancelled by user.")
                     break
@@ -1646,7 +1680,7 @@ class MuxerApp(ctk.CTk):
 
             if not self.cancel_event.is_set():
                 self.log(
-                    f"\nFinished! Successfully downloaded {success_count} out of {len(fonts_needed)} fonts."
+                    f"\nFinished! Successfully downloaded {success_count} out of {len(fonts_to_download)} fonts."
                 )
                 if failed_fonts:
                     self.log(f"Could not download: {', '.join(sorted(failed_fonts))}")
