@@ -27,12 +27,12 @@ class MuxerApp(ctk.CTk):
         super().__init__()
 
         self.title("Universal Video Muxer")
-        self.geometry("850x850")
-        self.minsize(700, 600)
+        self.geometry("900x900")
+        self.minsize(800, 700)
 
         # --- Main Scrollable Container ---
         self.main_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self.main_scroll.pack(fill="both", expand=True, padx=5, pady=5)
+        self.main_scroll.pack(fill="both", expand=True, padx=10, pady=10)
 
         # --- Threading Event for Cancellation ---
         self.cancel_event = threading.Event()
@@ -41,6 +41,16 @@ class MuxerApp(ctk.CTk):
 
         # --- List to track editable widgets for disabling/enabling ---
         self.editable_widgets = []
+
+        # --- Helper: Card Container ---
+        def create_card(parent, title=None):
+            card = ctk.CTkFrame(parent, fg_color=("gray95", "gray16"), corner_radius=8)
+            if title:
+                header = ctk.CTkLabel(
+                    card, text=title, font=ctk.CTkFont(size=14, weight="bold")
+                )
+                header.pack(anchor="w", padx=15, pady=(15, 5))
+            return card
 
         # --- Helper: Clearable Entry Widget ---
         def make_clearable_entry(parent, var, width=200):
@@ -51,49 +61,56 @@ class MuxerApp(ctk.CTk):
             clear_btn = ctk.CTkButton(
                 frame,
                 text="✕",
-                width=20,
-                height=20,
+                width=24,
+                height=24,
                 fg_color="transparent",
                 hover_color=("gray85", "gray25"),
                 text_color=("gray40", "gray50"),
                 command=lambda: var.set(""),
-                corner_radius=10,
+                corner_radius=12,
             )
-            clear_btn.pack(side="left", padx=(2, 0))
+            clear_btn.pack(side="left", padx=(4, 0))
             self.editable_widgets.extend([entry, clear_btn])
             return frame, entry
 
-        # --- Helper: Directory Row ---
-        def create_dir_row(parent, label_text, var):
-            row = ctk.CTkFrame(parent, fg_color="transparent")
-            row.pack(fill="x", pady=4)
-            ctk.CTkLabel(row, text=label_text, width=150, anchor="w").pack(
-                side="left", padx=(10, 5)
+        # --- Helper: Grid-Aligned Directory Row ---
+        def create_dir_row(parent, row_idx, label_text, var):
+            ctk.CTkLabel(parent, text=label_text, anchor="w", width=160).grid(
+                row=row_idx, column=0, padx=(15, 10), pady=8, sticky="w"
             )
-            entry_frame, _ = make_clearable_entry(row, var)
-            entry_frame.pack(side="left", fill="x", expand=True, padx=5)
+            entry_frame, _ = make_clearable_entry(parent, var)
+            entry_frame.grid(row=row_idx, column=1, padx=5, pady=8, sticky="ew")
             btn = ctk.CTkButton(
-                row, text="Browse", width=80, command=lambda: self.browse_dir(var)
+                parent,
+                text="📂 Browse",
+                width=90,
+                fg_color="transparent",
+                border_width=1,
+                text_color=("gray10", "gray90"),
+                command=lambda: self.browse_dir(var),
             )
-            btn.pack(side="left", padx=(5, 10))
+            btn.grid(row=row_idx, column=2, padx=(5, 15), pady=8)
+            parent.columnconfigure(1, weight=1)
             self.editable_widgets.append(btn)
 
-        # --- Helper: File Row ---
-        def create_file_row(parent, label_text, var, ftype):
-            row = ctk.CTkFrame(parent, fg_color="transparent")
-            row.pack(fill="x", pady=4)
-            ctk.CTkLabel(row, text=label_text, width=150, anchor="w").pack(
-                side="left", padx=(10, 5)
+        # --- Helper: Grid-Aligned File Row ---
+        def create_file_row(parent, row_idx, label_text, var, ftype):
+            ctk.CTkLabel(parent, text=label_text, anchor="w", width=160).grid(
+                row=row_idx, column=0, padx=(15, 10), pady=8, sticky="w"
             )
-            entry_frame, _ = make_clearable_entry(row, var)
-            entry_frame.pack(side="left", fill="x", expand=True, padx=5)
+            entry_frame, _ = make_clearable_entry(parent, var)
+            entry_frame.grid(row=row_idx, column=1, padx=5, pady=8, sticky="ew")
             btn = ctk.CTkButton(
-                row,
-                text="Browse",
-                width=80,
+                parent,
+                text="📄 Browse",
+                width=90,
+                fg_color="transparent",
+                border_width=1,
+                text_color=("gray10", "gray90"),
                 command=lambda: self.browse_file(var, ftype),
             )
-            btn.pack(side="left", padx=(5, 10))
+            btn.grid(row=row_idx, column=2, padx=(5, 15), pady=8)
+            parent.columnconfigure(1, weight=1)
             self.editable_widgets.append(btn)
 
         # --- Variables ---
@@ -122,11 +139,12 @@ class MuxerApp(ctk.CTk):
         self.mode_var = ctk.StringVar(value="Batch Mode")
         self.add_jump_points_var = ctk.BooleanVar(value=False)
 
-        # --- Mode Selection Frame ---
-        mode_frame = ctk.CTkFrame(self.main_scroll)
-        mode_frame.pack(fill="x", padx=15, pady=(15, 10))
+        # --- Mode Selection Card ---
+        self.mode_card = create_card(self.main_scroll, "Operation Mode")
+        self.mode_card.pack(fill="x", padx=10, pady=(0, 10))
+
         self.mode_switch = ctk.CTkSegmentedButton(
-            mode_frame,
+            self.mode_card,
             values=[
                 "Batch Mode",
                 "Single File Mode",
@@ -139,41 +157,43 @@ class MuxerApp(ctk.CTk):
             command=self.on_mode_change,
             font=ctk.CTkFont(size=13, weight="bold"),
         )
-        self.mode_switch.pack(pady=10)
+        self.mode_switch.pack(fill="x", padx=15, pady=(5, 15))
         self.editable_widgets.append(self.mode_switch)
 
-        # --- Source Frame (Directories / Files) ---
-        self.source_frame = ctk.CTkFrame(self.main_scroll)
-        self.source_frame.pack(fill="x", padx=15, pady=5)
+        # --- Source Configuration Card ---
+        self.source_card = create_card(self.main_scroll, "Source Configuration")
+        self.source_card.pack(fill="x", padx=10, pady=10)
 
-        self.batch_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
-        create_dir_row(self.batch_ui, "Video Directory:", self.video_dir_var)
-        create_dir_row(self.batch_ui, "Subtitle Directory:", self.sub_dir_var)
+        self.batch_ui = ctk.CTkFrame(self.source_card, fg_color="transparent")
+        create_dir_row(self.batch_ui, 0, "Video Directory:", self.video_dir_var)
+        create_dir_row(self.batch_ui, 1, "Subtitle Directory:", self.sub_dir_var)
 
-        self.single_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
-        create_file_row(self.single_ui, "Video File:", self.single_video_var, "Video")
+        self.single_ui = ctk.CTkFrame(self.source_card, fg_color="transparent")
         create_file_row(
-            self.single_ui, "Subtitle File:", self.single_sub_var, "Subtitle"
+            self.single_ui, 0, "Video File:", self.single_video_var, "Video"
+        )
+        create_file_row(
+            self.single_ui, 1, "Subtitle File:", self.single_sub_var, "Subtitle"
         )
 
-        self.copy_subs_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
+        self.copy_subs_ui = ctk.CTkFrame(self.source_card, fg_color="transparent")
         create_dir_row(
-            self.copy_subs_ui, "Source Dir (with subs):", self.source_sub_dir_var
+            self.copy_subs_ui, 0, "Source Dir (with subs):", self.source_sub_dir_var
         )
         create_dir_row(
-            self.copy_subs_ui, "Target Dir (no subs):", self.target_sub_dir_var
+            self.copy_subs_ui, 1, "Target Dir (no subs):", self.target_sub_dir_var
         )
 
-        self.remove_subs_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
-        create_dir_row(self.remove_subs_ui, "Video Directory:", self.video_dir_var)
+        self.remove_subs_ui = ctk.CTkFrame(self.source_card, fg_color="transparent")
+        create_dir_row(self.remove_subs_ui, 0, "Video Directory:", self.video_dir_var)
 
         # --- Edit Fonts Mode UI ---
-        self.edit_fonts_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
+        self.edit_fonts_ui = ctk.CTkFrame(self.source_card, fg_color="transparent")
 
         rb_frame = ctk.CTkFrame(self.edit_fonts_ui, fg_color="transparent")
-        rb_frame.pack(fill="x", padx=10, pady=(10, 5))
+        rb_frame.pack(fill="x", padx=15, pady=(5, 5))
         ctk.CTkLabel(rb_frame, text="Source Type:", width=150, anchor="w").pack(
-            side="left", padx=(0, 10)
+            side="left"
         )
         self.edit_folder_rb = ctk.CTkRadioButton(
             rb_frame,
@@ -197,25 +217,31 @@ class MuxerApp(ctk.CTk):
             self.edit_fonts_ui, fg_color="transparent"
         )
         create_dir_row(
-            self.edit_folder_frame, "Subtitle Directory:", self.edit_sub_dir_var
+            self.edit_folder_frame, 0, "Subtitle Directory:", self.edit_sub_dir_var
         )
 
         self.edit_file_frame = ctk.CTkFrame(self.edit_fonts_ui, fg_color="transparent")
         create_file_row(
-            self.edit_file_frame, "Subtitle File:", self.edit_single_sub_var, "Subtitle"
+            self.edit_file_frame,
+            0,
+            "Subtitle File:",
+            self.edit_single_sub_var,
+            "Subtitle",
         )
 
         self.scan_btn = ctk.CTkButton(
             self.edit_fonts_ui,
-            text="Scan Subtitles for Fonts",
+            text="🔍 Scan Subtitles for Fonts",
             command=self.scan_fonts,
             width=200,
         )
         self.scan_btn.pack(pady=10)
         self.editable_widgets.append(self.scan_btn)
 
-        self.font_editor_frame = ctk.CTkScrollableFrame(self.edit_fonts_ui, height=200)
-        self.font_editor_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.font_editor_frame = ctk.CTkScrollableFrame(
+            self.edit_fonts_ui, height=200, fg_color=("gray90", "gray13")
+        )
+        self.font_editor_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
         self.font_mapping_vars = {}
         self.common_fonts = [
@@ -362,12 +388,12 @@ class MuxerApp(ctk.CTk):
         self.toggle_edit_source()  # Initialize visibility
 
         # --- Download Fonts Mode UI ---
-        self.download_fonts_ui = ctk.CTkFrame(self.source_frame, fg_color="transparent")
+        self.download_fonts_ui = ctk.CTkFrame(self.source_card, fg_color="transparent")
 
         dl_rb_frame = ctk.CTkFrame(self.download_fonts_ui, fg_color="transparent")
-        dl_rb_frame.pack(fill="x", padx=10, pady=(10, 5))
+        dl_rb_frame.pack(fill="x", padx=15, pady=(5, 5))
         ctk.CTkLabel(dl_rb_frame, text="Source Type:", width=150, anchor="w").pack(
-            side="left", padx=(0, 10)
+            side="left"
         )
         self.dl_folder_rb = ctk.CTkRadioButton(
             dl_rb_frame,
@@ -391,7 +417,7 @@ class MuxerApp(ctk.CTk):
             self.download_fonts_ui, fg_color="transparent"
         )
         create_dir_row(
-            self.dl_folder_frame, "Subtitle Directory:", self.download_sub_dir_var
+            self.dl_folder_frame, 0, "Subtitle Directory:", self.download_sub_dir_var
         )
 
         self.dl_file_frame = ctk.CTkFrame(
@@ -399,6 +425,7 @@ class MuxerApp(ctk.CTk):
         )
         create_file_row(
             self.dl_file_frame,
+            0,
             "Subtitle File:",
             self.download_single_sub_var,
             "Subtitle",
@@ -406,12 +433,12 @@ class MuxerApp(ctk.CTk):
 
         self.dl_out_frame = ctk.CTkFrame(self.download_fonts_ui, fg_color="transparent")
         create_dir_row(
-            self.dl_out_frame, "Output Directory:", self.download_out_dir_var
+            self.dl_out_frame, 0, "Output Directory:", self.download_out_dir_var
         )
 
         self.dl_scan_btn = ctk.CTkButton(
             self.download_fonts_ui,
-            text="Scan Subtitles for Fonts",
+            text="🔍 Scan Subtitles for Fonts",
             command=self.scan_download_fonts,
             width=200,
         )
@@ -419,176 +446,203 @@ class MuxerApp(ctk.CTk):
         self.editable_widgets.append(self.dl_scan_btn)
 
         self.dl_font_list_frame = ctk.CTkScrollableFrame(
-            self.download_fonts_ui, height=200
+            self.download_fonts_ui, height=200, fg_color=("gray90", "gray13")
         )
-        self.dl_font_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        self.dl_font_list_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
         self.dl_font_vars = {}
 
         self.toggle_download_source()
+        self.batch_ui.pack(fill="x", pady=(0, 10))  # Default Active Source UI
 
-        self.batch_ui.pack(fill="x")  # Default
+        # --- Optional Settings Card ---
+        self.settings_card = create_card(self.main_scroll, "Output Settings")
+        self.settings_card.pack(fill="x", padx=10, pady=10)
 
-        # --- Font Directory (Shared) ---
-        self.font_frame = ctk.CTkFrame(self.main_scroll)
-        self.font_frame.pack(fill="x", padx=15, pady=5)
-        create_dir_row(self.font_frame, "Font Directory (Optional):", self.font_dir_var)
+        # Font Directory
+        self.font_frame = ctk.CTkFrame(self.settings_card, fg_color="transparent")
+        self.font_frame.pack(fill="x")
+        create_dir_row(self.font_frame, 0, "Font Dir (Optional):", self.font_dir_var)
 
-        # --- Settings Frame ---
-        self.settings_frame = ctk.CTkFrame(self.main_scroll)
-        self.settings_frame.pack(fill="x", padx=15, pady=10)
+        settings_inner = ctk.CTkFrame(self.settings_card, fg_color="transparent")
+        settings_inner.pack(fill="x", padx=15, pady=(5, 15))
 
-        ctk.CTkLabel(self.settings_frame, text="Series Name (Optional):").pack(
-            anchor="w", padx=10, pady=(10, 0)
-        )
-        series_frame, _ = make_clearable_entry(
-            self.settings_frame, self.series_name_var, width=550
-        )
-        series_frame.pack(anchor="w", padx=10, pady=(0, 10))
-
+        # Series Name
         ctk.CTkLabel(
-            self.settings_frame,
-            text="Output Template (Optional, e.g., {series} EP{ep2}):",
-        ).pack(anchor="w", padx=10, pady=(10, 0))
-        template_frame, self.output_template_entry = make_clearable_entry(
-            self.settings_frame, self.output_template_var, width=550
-        )
-        template_frame.pack(anchor="w", padx=10, pady=(0, 5))
+            settings_inner, text="Series Name (Optional):", width=200, anchor="w"
+        ).grid(row=0, column=0, pady=5, sticky="w")
+        series_frame, _ = make_clearable_entry(settings_inner, self.series_name_var)
+        series_frame.grid(row=0, column=1, pady=5, sticky="ew")
 
-        var_frame = ctk.CTkFrame(self.settings_frame, fg_color="transparent")
-        var_frame.pack(anchor="w", padx=10, pady=(0, 10))
+        # Output Template
+        ctk.CTkLabel(
+            settings_inner,
+            text="Output Template (e.g., {series} EP{ep2}):",
+            width=250,
+            anchor="w",
+        ).grid(row=1, column=0, pady=5, sticky="w")
+        template_frame, self.output_template_entry = make_clearable_entry(
+            settings_inner, self.output_template_var
+        )
+        template_frame.grid(row=1, column=1, pady=5, sticky="ew")
+        settings_inner.columnconfigure(1, weight=1)
+
+        # Template Variables Row
+        var_frame = ctk.CTkFrame(settings_inner, fg_color="transparent")
+        var_frame.grid(row=2, column=1, pady=(2, 10), sticky="w")
         for var in ["{series}", "{ep}", "{ep2}", "{video_stem}"]:
             btn = ctk.CTkButton(
                 var_frame,
                 text=var,
-                width=90,
-                height=28,
+                width=80,
+                height=24,
+                fg_color=("gray85", "gray25"),
+                text_color=("black", "white"),
+                hover_color=("gray75", "gray35"),
                 command=lambda v=var: self.insert_template_var(v),
             )
             btn.pack(side="left", padx=(0, 5))
             self.editable_widgets.append(btn)
 
-        # --- Jump Points Frame ---
-        self.jump_frame = ctk.CTkFrame(self.main_scroll)
-        self.jump_frame.pack(fill="x", padx=15, pady=10)
+        # --- Jump Points Card ---
+        self.jump_card = create_card(self.main_scroll)
+        self.jump_card.pack(fill="x", padx=10, pady=10)
 
         self.jump_switch = ctk.CTkSwitch(
-            self.jump_frame,
+            self.jump_card,
             text="Add Jump Points (Chapters)",
+            font=ctk.CTkFont(weight="bold"),
             variable=self.add_jump_points_var,
             command=self.toggle_jump_points,
         )
-        self.jump_switch.pack(anchor="w", padx=10, pady=(10, 5))
+        self.jump_switch.pack(anchor="w", padx=15, pady=15)
         self.editable_widgets.append(self.jump_switch)
 
-        self.jp_input_frame = ctk.CTkFrame(self.jump_frame, fg_color="transparent")
-        ctk.CTkLabel(self.jp_input_frame, text="Title:").grid(
-            row=0, column=0, padx=(0, 5), pady=5, sticky="e"
+        self.jp_input_frame = ctk.CTkFrame(self.jump_card, fg_color="transparent")
+
+        # Grid alignment for Jump Points
+        ctk.CTkLabel(self.jp_input_frame, text="Chapter Title:").grid(
+            row=0, column=0, padx=(15, 5), pady=5, sticky="e"
         )
-        self.jp_title_entry = ctk.CTkEntry(self.jp_input_frame, width=250)
-        self.jp_title_entry.grid(row=0, column=1, padx=(0, 15), pady=5)
+        self.jp_title_entry = ctk.CTkEntry(self.jp_input_frame, width=200)
+        self.jp_title_entry.grid(row=0, column=1, padx=(0, 15), pady=5, sticky="we")
         self.editable_widgets.append(self.jp_title_entry)
 
         ctk.CTkLabel(self.jp_input_frame, text="Time:").grid(
             row=0, column=2, padx=(0, 5), pady=5, sticky="e"
         )
-        self.jp_hh_entry = ctk.CTkEntry(
-            self.jp_input_frame, width=40, placeholder_text="HH"
-        )
-        self.jp_hh_entry.grid(row=0, column=3, pady=5)
-        self.editable_widgets.append(self.jp_hh_entry)
+        time_container = ctk.CTkFrame(self.jp_input_frame, fg_color="transparent")
+        time_container.grid(row=0, column=3, pady=5, sticky="w")
 
-        ctk.CTkLabel(self.jp_input_frame, text=":").grid(row=0, column=4, padx=2)
+        self.jp_hh_entry = ctk.CTkEntry(
+            time_container, width=45, placeholder_text="HH", justify="center"
+        )
+        self.jp_hh_entry.pack(side="left")
+        self.editable_widgets.append(self.jp_hh_entry)
+        ctk.CTkLabel(time_container, text=":").pack(side="left", padx=3)
 
         self.jp_mm_entry = ctk.CTkEntry(
-            self.jp_input_frame, width=40, placeholder_text="MM"
+            time_container, width=45, placeholder_text="MM", justify="center"
         )
-        self.jp_mm_entry.grid(row=0, column=5, pady=5)
+        self.jp_mm_entry.pack(side="left")
         self.editable_widgets.append(self.jp_mm_entry)
-
-        ctk.CTkLabel(self.jp_input_frame, text=":").grid(row=0, column=6, padx=2)
+        ctk.CTkLabel(time_container, text=":").pack(side="left", padx=3)
 
         self.jp_ss_entry = ctk.CTkEntry(
-            self.jp_input_frame, width=50, placeholder_text="SS.ms"
+            time_container, width=60, placeholder_text="SS.ms", justify="center"
         )
-        self.jp_ss_entry.grid(row=0, column=7, pady=5)
+        self.jp_ss_entry.pack(side="left")
         self.editable_widgets.append(self.jp_ss_entry)
 
         self.jp_add_btn = ctk.CTkButton(
-            self.jp_input_frame,
-            text="Add Chapter",
-            width=120,
-            command=self.add_jump_point,
+            self.jp_input_frame, text="➕ Add", width=80, command=self.add_jump_point
         )
-        self.jp_add_btn.grid(row=0, column=8, padx=(15, 0), pady=5)
+        self.jp_add_btn.grid(row=0, column=4, padx=(15, 15), pady=5)
         self.editable_widgets.append(self.jp_add_btn)
+        self.jp_input_frame.columnconfigure(1, weight=1)
 
-        self.jp_list_frame = ctk.CTkScrollableFrame(self.jump_frame, height=140)
+        self.jp_list_frame = ctk.CTkScrollableFrame(
+            self.jump_card, height=120, fg_color=("gray90", "gray13")
+        )
         self.jump_points = []
 
-        # --- Control Frame ---
-        ctrl_frame = ctk.CTkFrame(self.main_scroll)
-        ctrl_frame.pack(fill="x", padx=15, pady=10)
+        # --- Controls & Progress ---
+        self.ctrl_frame = ctk.CTkFrame(self.main_scroll, fg_color="transparent")
+        self.ctrl_frame.pack(fill="x", padx=10, pady=10)
 
         self.start_btn = ctk.CTkButton(
-            ctrl_frame,
-            text="Start Operation",
+            self.ctrl_frame,
+            text="▶ Start Operation",
             command=self.start_muxing,
-            height=40,
+            height=45,
             font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#28a745",
+            hover_color="#218838",
         )
-        self.start_btn.pack(side="left", padx=10, pady=10)
+        self.start_btn.pack(side="left", padx=(0, 10))
         self.editable_widgets.append(self.start_btn)
 
         self.cancel_btn = ctk.CTkButton(
-            ctrl_frame,
-            text="Cancel",
+            self.ctrl_frame,
+            text="🛑 Cancel",
             command=self.cancel_muxing,
             width=100,
-            height=40,
+            height=45,
             fg_color="#D9534F",
             hover_color="#C9302C",
             font=ctk.CTkFont(size=14, weight="bold"),
             state="disabled",
         )
-        self.cancel_btn.pack(side="left", padx=10, pady=10)
+        self.cancel_btn.pack(side="left")
 
         self.clear_btn = ctk.CTkButton(
-            ctrl_frame, text="Clear Log", command=self.clear_log, width=100
+            self.ctrl_frame,
+            text="🗑️ Clear Log",
+            command=self.clear_log,
+            width=110,
+            height=45,
+            fg_color="transparent",
+            border_width=1,
+            text_color=("black", "white"),
         )
-        self.clear_btn.pack(side="right", padx=10, pady=10)
+        self.clear_btn.pack(side="right")
 
         # --- Progress Bar Frame (Hidden initially) ---
-        self.progress_frame = ctk.CTkFrame(self.main_scroll)
+        self.progress_frame = ctk.CTkFrame(self.main_scroll, fg_color="transparent")
 
-        self.progress_bar = ctk.CTkProgressBar(self.progress_frame)
-        self.progress_bar.pack(fill="x", expand=True, padx=5, pady=(5, 0))
+        self.progress_bar = ctk.CTkProgressBar(self.progress_frame, height=12)
+        self.progress_bar.pack(fill="x", expand=True, pady=(5, 5))
         self.progress_bar.set(0)
 
-        self.progress_label = ctk.CTkLabel(self.progress_frame, text="Progress: 0/0")
-        self.progress_label.pack(anchor="w", padx=5, pady=(0, 5))
+        self.progress_label = ctk.CTkLabel(
+            self.progress_frame, text="Progress: 0/0", font=ctk.CTkFont(weight="bold")
+        )
+        self.progress_label.pack(anchor="w")
 
-        # --- Log Output Frame ---
-        self.log_frame = ctk.CTkFrame(self.main_scroll)
-        self.log_frame.pack(fill="both", expand=True, padx=15, pady=(10, 15))
+        # --- Terminal-Style Log Output ---
+        self.log_card = create_card(self.main_scroll, "Console Output")
+        self.log_card.pack(fill="both", expand=True, padx=10, pady=(0, 15))
+
         self.log_text = ctk.CTkTextbox(
-            self.log_frame,
+            self.log_card,
             state="disabled",
             wrap="word",
-            font=ctk.CTkFont(family="Consolas", size=12),
-            height=150,
+            font=ctk.CTkFont(family="Consolas", size=13),
+            height=180,
+            fg_color="#1E1E1E",
+            text_color="#00FF00",  # Hacker/Terminal styling
         )
-        self.log_text.pack(fill="both", expand=True, padx=5, pady=5)
+        self.log_text.pack(fill="both", expand=True, padx=10, pady=(0, 15))
 
         # --- FFmpeg Detection ---
         self.ffmpeg_path = self.find_executable("ffmpeg")
         self.ffprobe_path = self.find_executable("ffprobe")
 
         if self.ffmpeg_path and self.ffprobe_path:
-            self.log(f"Ready. Detected ffmpeg at: {self.ffmpeg_path}")
+            self.log(f"[SYS] Ready. Detected ffmpeg at: {self.ffmpeg_path}")
         else:
             self.log(
-                "WARNING: ffmpeg or ffprobe not found in 'tools' folder or system PATH!"
+                "[WARN] ffmpeg or ffprobe not found in 'tools' folder or system PATH!"
             )
 
     # --- Core Methods ---
@@ -672,7 +726,7 @@ class MuxerApp(ctk.CTk):
         for font in sorted(fonts_found):
             var = ctk.BooleanVar(value=True)
             cb = ctk.CTkCheckBox(self.dl_font_list_frame, text=font, variable=var)
-            cb.pack(anchor="w", padx=10, pady=2)
+            cb.pack(anchor="w", padx=15, pady=4)
             self.dl_font_vars[font] = var
             self.editable_widgets.append(cb)
 
@@ -887,22 +941,21 @@ class MuxerApp(ctk.CTk):
         self.edit_fonts_ui.pack_forget()
         self.download_fonts_ui.pack_forget()
 
-        self.font_frame.pack_forget()
-        self.settings_frame.pack_forget()
-        self.jump_frame.pack_forget()
+        self.settings_card.pack_forget()
+        self.jump_card.pack_forget()
 
         if value == "Batch Mode":
-            self.batch_ui.pack(fill="x")
+            self.batch_ui.pack(fill="x", pady=(0, 10))
         elif value == "Single File Mode":
-            self.single_ui.pack(fill="x")
+            self.single_ui.pack(fill="x", pady=(0, 10))
         elif value == "Copy Subtitles Mode":
-            self.copy_subs_ui.pack(fill="x")
+            self.copy_subs_ui.pack(fill="x", pady=(0, 10))
         elif value == "Remove Subtitles Mode":
-            self.remove_subs_ui.pack(fill="x")
+            self.remove_subs_ui.pack(fill="x", pady=(0, 10))
         elif value == "Edit Fonts Mode":
-            self.edit_fonts_ui.pack(fill="x")
+            self.edit_fonts_ui.pack(fill="x", pady=(0, 10))
         elif value == "Download Fonts Mode":
-            self.download_fonts_ui.pack(fill="x")
+            self.download_fonts_ui.pack(fill="x", pady=(0, 10))
 
         if value not in [
             "Edit Fonts Mode",
@@ -910,14 +963,13 @@ class MuxerApp(ctk.CTk):
             "Copy Subtitles Mode",
             "Download Fonts Mode",
         ]:
-            self.font_frame.pack(fill="x", padx=15, pady=5)
-            self.settings_frame.pack(fill="x", padx=15, pady=10)
-            self.jump_frame.pack(fill="x", padx=15, pady=10)
+            self.settings_card.pack(fill="x", padx=10, pady=10, before=self.ctrl_frame)
+            self.jump_card.pack(fill="x", padx=10, pady=10, before=self.ctrl_frame)
 
     def toggle_jump_points(self):
         if self.add_jump_points_var.get():
-            self.jp_input_frame.pack(fill="x", padx=10, pady=(5, 0))
-            self.jp_list_frame.pack(fill="both", expand=True, padx=10, pady=(5, 10))
+            self.jp_input_frame.pack(fill="x", padx=15, pady=(5, 0))
+            self.jp_list_frame.pack(fill="both", expand=True, padx=15, pady=(10, 15))
         else:
             self.jp_input_frame.pack_forget()
             self.jp_list_frame.pack_forget()
@@ -949,17 +1001,23 @@ class MuxerApp(ctk.CTk):
             return
         ms = (h * 3600 + m * 60 + s_int) * 1000 + ms_frac
         time_str = f"{h:02d}:{m:02d}:{s_int:02d}.{ms_frac:03d}"
+
         row_frame = ctk.CTkFrame(self.jp_list_frame, fg_color="transparent")
         row_frame.pack(fill="x", pady=2)
-        ctk.CTkLabel(row_frame, text=f"{title} ({time_str})").pack(side="left", padx=10)
+        ctk.CTkLabel(
+            row_frame, text=f"• {title} ({time_str})", font=ctk.CTkFont(weight="bold")
+        ).pack(side="left", padx=10)
         del_btn = ctk.CTkButton(
             row_frame,
-            text="Delete",
-            width=60,
+            text="✕",
+            width=30,
+            height=24,
+            corner_radius=12,
             fg_color="#D9534F",
             hover_color="#C9302C",
         )
         del_btn.pack(side="right", padx=10)
+
         jp_data = {"title": title, "ms": ms, "row_frame": row_frame, "del_btn": del_btn}
         self.jump_points.append(jp_data)
         del_btn.configure(command=lambda: self.delete_jump_point(jp_data))
@@ -1025,9 +1083,9 @@ class MuxerApp(ctk.CTk):
 
         self.progress_bar.set(0)
         self.progress_label.configure(text="Progress: 0/0")
-        self.progress_frame.pack(fill="x", padx=15, pady=5, before=self.log_frame)
+        self.progress_frame.pack(fill="x", padx=10, pady=(0, 10), before=self.log_card)
 
-        self.log("=" * 40)
+        self.log("=" * 50)
         self.log("Starting operation...")
         threading.Thread(target=self.run_muxing_thread, daemon=True).start()
 
