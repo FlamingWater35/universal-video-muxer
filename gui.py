@@ -435,6 +435,7 @@ class MuxerApp(ctk.CTk):
         create_dir_row(
             self.dl_out_frame, 0, "Output Directory:", self.download_out_dir_var
         )
+        self.dl_out_frame.pack(fill="x", pady=4)
 
         self.dl_scan_btn = ctk.CTkButton(
             self.download_fonts_ui,
@@ -648,11 +649,11 @@ class MuxerApp(ctk.CTk):
     # --- Core Methods ---
     def toggle_download_source(self):
         if self.download_type_var.get() == "Folder":
-            self.dl_folder_frame.pack(fill="x", pady=4)
+            self.dl_folder_frame.pack(fill="x", pady=4, before=self.dl_out_frame)
             self.dl_file_frame.pack_forget()
         else:
             self.dl_folder_frame.pack_forget()
-            self.dl_file_frame.pack(fill="x", pady=4)
+            self.dl_file_frame.pack(fill="x", pady=4, before=self.dl_out_frame)
 
     def scan_download_fonts(self):
         source_type = self.download_type_var.get()
@@ -749,11 +750,11 @@ class MuxerApp(ctk.CTk):
 
     def toggle_edit_source(self):
         if self.edit_type_var.get() == "Folder":
-            self.edit_folder_frame.pack(fill="x", pady=4)
+            self.edit_folder_frame.pack(fill="x", pady=4, before=self.scan_btn)
             self.edit_file_frame.pack_forget()
         else:
             self.edit_folder_frame.pack_forget()
-            self.edit_file_frame.pack(fill="x", pady=4)
+            self.edit_file_frame.pack(fill="x", pady=4, before=self.scan_btn)
 
     def scan_fonts(self):
         source_type = self.edit_type_var.get()
