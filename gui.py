@@ -8,6 +8,7 @@ import sys
 import time
 import tkinter as tk
 from tkinter import filedialog
+import tkinter.messagebox as messagebox
 
 # Hide console windows for subprocesses on Windows
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -31,6 +32,8 @@ class MuxerApp(ctk.CTk):
 
         # --- Threading Event for Cancellation ---
         self.cancel_event = threading.Event()
+        self.confirm_event = threading.Event()
+        self.confirm_result = False
 
         # --- List to track editable widgets for disabling/enabling ---
         self.editable_widgets = []
@@ -402,6 +405,19 @@ class MuxerApp(ctk.CTk):
             )
 
     # --- Core Methods ---
+    def ask_confirmation(self, title, message):
+        self.confirm_event.clear()
+        self.confirm_result = False
+
+        def show_dialog():
+            res = messagebox.askyesno(title, message, parent=self)
+            self.confirm_result = res
+            self.confirm_event.set()
+
+        self.after(0, show_dialog)
+        self.confirm_event.wait()
+        return self.confirm_result
+
     def toggle_edit_source(self):
         if self.edit_type_var.get() == "Folder":
             self.edit_folder_frame.pack(fill="x", pady=4)
@@ -1392,6 +1408,73 @@ class MuxerApp(ctk.CTk):
             return
         if self.cancel_event.is_set():
             return  # Cancelled during pairing
+
+        # --- Font Verification Check ---
+        sub_files_to_check = [s for v, s, ep in paired]
+        fonts_needed = set()
+
+        for sub_file in sub_files_to_check:
+            if sub_file.suffix.lower() not in {".ass", ".ssa"}:
+                continue
+            try:
+                content = sub_file.read_text(encoding="utf-8-sig", errors="ignore")
+            except Exception:
+                try:
+                    content = sub_file.read_text(encoding="cp1252", errors="ignore")
+                except Exception:
+                    continue
+
+            in_styles = False
+            font_idx = -1
+            for line in content.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("[V4") or stripped.startswith("[V4+"):
+                    in_styles = True
+                    font_idx = -1
+                    continue
+                if stripped.startswith("[") and in_styles:
+                    in_styles = False
+                    continue
+
+                if in_styles:
+                    if stripped.lower().startswith("format:"):
+                        parts = [p.strip().lower() for p in stripped[7:].split(",")]
+                        if "fontname" in parts:
+                            font_idx = parts.index("fontname")
+                    elif stripped.lower().startswith("style:"):
+                        if font_idx != -1:
+                            parts = [p.strip() for p in stripped[6:].split(",")]
+                            if len(parts) > font_idx:
+                                fonts_needed.add(parts[font_idx])
+
+        if fonts_needed:
+
+            def normalize_font_name(name):
+                return re.sub(r"[^a-z0-9]", "", name.lower())
+
+            available_normalized = set()
+            for f in fonts:
+                available_normalized.add(normalize_font_name(f.stem))
+
+            missing_fonts = set()
+            for needed in fonts_needed:
+                needed_norm = normalize_font_name(needed)
+                found = False
+                for avail in available_normalized:
+                    if needed_norm in avail or avail in needed_norm:
+                        found = True
+                        break
+                if not found:
+                    missing_fonts.add(needed)
+
+            if missing_fonts:
+                missing_list = "\n".join(sorted(missing_fonts))
+                msg = f"The following fonts required by the subtitles were not found in the Font Directory:\n\n{missing_list}\n\nDo you want to proceed anyway?"
+                if not self.ask_confirmation("Missing Fonts", msg):
+                    self.log(
+                        "\n[ABORTED] Operation cancelled by user due to missing fonts."
+                    )
+                    return
 
         self.log(f"Found {len(fonts)} font(s)\nMatched {len(paired)} item(s)\n")
 
